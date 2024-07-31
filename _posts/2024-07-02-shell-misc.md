@@ -27,6 +27,48 @@ x右边不是y时匹配成功
 负向零宽后发断言 (?<!y)x
 x左边不是y时匹配成功
 
+需要使用-P选项
+
+[root@liali-vm1 job_scheduler]# grep  -P -o "(?<=SKIP_DRIVER\=\").*?(?=\")" -R list/
+list/sriov.list:bnx2x
+list/sriov.list:igb
+list/sriov.list:bnx2x
+list/sriov.list:bnx2x
+list/sriov.list:bnx2x
+list/sriov.list:cxgb4
+list/sriov.list:be2net
+list/sriov.list:be2net
+list/sriov.list:qlcnic bnx2x liquidio
+list/sriov.list:qlcnic bnx2x liquidio
+list/sriov.list:qlcnic bnx2x liquidio
+list/sriov.list:qlcnic bnx2x liquidio
+list/sriov.list:mlx4_en
+list/sriov.list:qlcnic bnx2x cxgb4 liquidio
+list/sriov.list:qlcnic bnx2x sfc ixgbe igb mlx4_en be2net cxgb4 liquidio
+list/sriov.list:mlx4_en cxgb4 liquidio
+list/sriov.list:nfp
+list/sriov.list:cxgb4 nfp
+list/sriov.list:be2net cxgb4
+list/sriov.list:be2net cxgb4
+list/sriov.list:liquidio cxgb4 igb be2net bnx2x mlx4_en sfc ice
+list/sriov.list:bnxt_en cxgb4
+list/sriov.list:mlx4_en
+list/qinq.list:cxgb4 be2net bnx2x igb ionic ixgbe mlx4_en nfp sfc bnxt_en qede
+list/qinq.list:cxgb4 be2net bnx2x igb ionic ixgbe mlx4_en nfp sfc bnxt_en qede
+list/qinq.list:cxgb4 be2net bnx2x igb ionic ixgbe mlx4_en nfp sfc bnxt_en qede
+
+```
+
+## grep \b
+```
+https://unix.stackexchange.com/questions/22700/what-does-b-mean-in-a-grep-pattern
+
+\b in a regular expression means "word boundary".
+
+With this grep command, you are searching for all words i in the file linux.txt. i can be at the beginning of a line or at the end, or between two space characters in a sentence.
+
+More precisely, not only space, but any non-word character. Just like the -w --word-regexp switch does: grep -w "i" linux.txt. For example a line like "<i>italic</i>" also matches. 
+
 ```
 
 [soruce](https://www.junmajinlong.com/shell/bash_source/)
