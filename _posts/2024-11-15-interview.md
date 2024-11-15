@@ -129,3 +129,19 @@ git blame -L 1,10 nic_info
 ```
 Did you ever contribute to linux upstream?
 ```
+
+## network
+```
+1. ipv6 address type
+https://l8liliang.github.io/2022/01/04/ipv6-address.html
+
+2. icmpv6 https://l8liliang.github.io/2022/01/05/icmpv6.html
+路由器和主机之间发送的，行使动态地址分配功能的消息：
+1.路由器恳求消息RS Router Solicitation
+2.路由器通告消息RA Router Advertisement
+
+主机之间，行使地址解析功能的消息：
+3.邻居恳求消息NS Neighbor Solicitation
+3.邻居通告消息NA Neighbor Advertisement
+
+```
