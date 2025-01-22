@@ -202,3 +202,19 @@ a.txt
 081 083 085 087 089
 091 093 095 097 099
 ```
+
+## Disable Kernel Parameter for Sending ICMP Redirects
+```
+https://unix.stackexchange.com/questions/57941/linux-always-send-icmp-redirect
+https://docs.datadoghq.com/security/default_rules/xccdf-org-ssgproject-content-rule-sysctl-net-ipv4-conf-default-send-redirects/
+
+echo 0 | tee /proc/sys/net/ipv4/conf/*/send_redirects
+
+ipv6: https://www.quora.com/How-do-I-make-Linux-stop-sending-IPv6-ICMP-redirects
+```
+
+## enable ip forward
+```
+echo 1 > /proc/sys/net/ipv4/ip_forward
+echo 1 > /proc/sys/net/ipv6/conf/all/forwarding 
+```
