@@ -1,7 +1,7 @@
 ---
 layout: article
 tags: Beaker
-title: Interview
+title: restraint
 mathjax: true
 key: Linux
 ---
