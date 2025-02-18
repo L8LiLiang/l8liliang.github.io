@@ -145,3 +145,83 @@ https://l8liliang.github.io/2022/01/04/ipv6-address.html
 3.邻居通告消息NA Neighbor Advertisement
 
 ```
+
+## pci
+```
+1. How to check pci bandwidth
+https://docs.google.com/presentation/d/19R8VZPFN1T3Ap9FrytfDPbMKLMpz_38n33e4cf3kGpw/edit#slide=id.gcf7cf741d2_0_26
+use lapci
+Every PCIe device has a BDF(Bus,Device,Function)
+
+Driver register to PCI subsystem by calling pci_register_driver()
+PCI subsystem scan device and find driver by device id and call driver probe()
+Driver control HW by calling functions provided by PCI subsystem
+Every PCIe device has a BDF(Bus,Device,Function)
+Data transfer via PCIe bus
+
+2. Can you describe PCIe Bus Struct
+Root Complex : RC is used to connect CPU and PCIe.
+pcie switch 
+pice bridge
+pcie endpoint
+
+3. PCIe Layers
+https://docs.google.com/presentation/d/19R8VZPFN1T3Ap9FrytfDPbMKLMpz_38n33e4cf3kGpw/edit#slide=id.gcf7cf741d2_0_14
+
+4. How to list pci tree in linux system.
+lspci -t
+```
+
+## network performance
+```
+How to tunning network performance?
+Try to list all the linux configuration item relevant to network performance.
+
+https://l8liliang.github.io/2021/08/19/linux-network-performance.html
+
+• SoftIRQ misses (netdev budget)
+• "tuned" tuning daemon
+• "numad" NUMA daemon
+• CPU power states
+• Interrupt balancing 
+• Pause frames
+• Interrupt Coalescence
+• Adapter queue (netdev backlog)
+• Adapter RX and TX buffers
+• Adapter TX queue
+• Module parameters
+• Adapter offloading
+• Jumbo Frames
+• TCP and UDP protocol tuning
+• NUMA locality
+
+1. what's NUMA
+https://l8liliang.github.io/2021/08/19/linux-network-performance.html#numa
+
+2. Can bind a port to another specific NUMB
+echo 0 > /sys/class/net/ens1f0/device/numa_node 
+
+3. bind process to NUMA
+使用numactl把进程绑定到网卡所属numa
+numactl --cpubind=netdev:ens4f1 --membind=netdev:ens4f1 iperf3 -s -D -p $port -B 199.3.3.1 &> log$port &
+
+4. ira balance and irq affinity
+echo $affinity > /proc/irq/$irq/smp_affinity
+```
+
+## The underlying technique of sriov, why sriov vnic has same throughput with physical NIC?
+```
+iommu
+```
+
+## NIC offload
+```
+TSO tcp
+UFO udp
+GSO tcp/udp
+
+LRO tcp
+GRO tcp/udp
+
+How to check if TSO/GRO offload is working well?
+```
