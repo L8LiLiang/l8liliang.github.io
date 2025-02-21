@@ -13,7 +13,7 @@ https://docs.fedoraproject.org/en-US/bootc/qemu-and-libvirt/
 
 podman login quay.io
 
-# cat config.toml 
+# Create config.toml for bootc-image-builder
 [[customizations.user]]
 name = "root"
 password = "redhat"
@@ -24,7 +24,7 @@ CONTAINER_IMAGE=images.paas.redhat.com/bootc/rhel-bootc:latest-9.6
 sudo podman pull $CONTAINER_IMAGE
 # Create an output directory to write the qcow2 file to
 mkdir -p output
-# Create an empty config.toml for bootc-image-builder
+
 sudo podman run \
     --rm \
     -it \
@@ -73,7 +73,7 @@ mac4vm=a4:a4:a4:a4:a4:a3
 
 # download image
 #wget http://netqe-bj.usersys.redhat.com/share/vms/rhel8.4.qcow2 -O /var/lib/libvirt/images/$vm_name.qcow2
-\cp /root/image/output/qcow2/disk.qcow2 /var/lib/libvirt/images/$vm_name.qcow2 
+\cp /root/output/qcow2/disk.qcow2 /var/lib/libvirt/images/$vm_name.qcow2 
 # install vm
 virt-install \
         --name $vm_name \
