@@ -89,3 +89,36 @@ virt-install \
         --noautoconsol 
 
 ```
+
+## build aarch64 image
+```
+# cat Containerfile 
+FROM registry.stage.redhat.io/rhel9/rhel-bootc:9.5
+
+RUN echo "root:redhat" | chpasswd
+ADD ./resolv.conf /etc/resolv.conf
+RUN echo 1 > /etc/secert
+
+#ADD http://lab-02.rhts.eng.rdu.redhat.com/beaker/anamon3 /usr/local/sbin/anamon
+#RUN chmod 755 /usr/local/sbin/anamon
+#
+ADD https://certs.corp.redhat.com/certs/Current-IT-Root-CAs.pem  /etc/pki/ca-trust/source/anchors/Current-IT-Root-CAs.pem
+RUN update-ca-trust
+#
+#RUN dnf -y install restraint restraint-rhts
+
+RUN dnf -y clean all
+
+RUN bootc container lint
+
+podman login quay.io
+podman login registry.stage.redhat.io
+
+# when executing on aarch64 ststem
+podman build -t rhel95 -f Containerfile .
+# or podman build -t rhel95 -f Containerfile --platform linux/arm64 .
+
+podman tag localhost/rhel95  quay.io/liali/rhel9.5-aarch64
+
+podman push quay.io/liali/rhel9.5-aarch64
+```
