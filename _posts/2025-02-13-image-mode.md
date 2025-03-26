@@ -97,7 +97,7 @@ FROM registry.stage.redhat.io/rhel9/rhel-bootc:9.5
 
 RUN echo "root:redhat" | chpasswd
 ADD ./resolv.conf /etc/resolv.conf
-RUN echo 1 > /etc/secert
+RUN echo 1 > /etc/secret
 
 #ADD http://lab-02.rhts.eng.rdu.redhat.com/beaker/anamon3 /usr/local/sbin/anamon
 #RUN chmod 755 /usr/local/sbin/anamon
