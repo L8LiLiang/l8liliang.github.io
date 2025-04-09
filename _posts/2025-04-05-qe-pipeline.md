@@ -219,8 +219,16 @@ bkrwow-submitter:
 3.2 runners/templates-general.yml
 
 3.3 definitions/integration-tests.yml 这个是测试qe-pipeline自身的，不是测试kernel更新的
+```
 
-
-
-
+## temporary cfg
+```
+ 38 integration-test:
+ 39   stage: 🐛
+ 40   variables:
+ 41     # QE_PIPELINE_DEFINITION_PIPELINE_FILENAME: definitions/integration-tests.yml
+ 42     QE_PIPELINE_DEFINITION_PIPELINE_FILENAME: definitions/rhel10/10.1/schedules/userspace-candidate.yml
+ 43     QE_PIPELINE_DEFINITION_REF: $CI_COMMIT_SHA
+ 44     _DRY_RUN: 1
+ 45     _TEST_SOURCE_PACKAGE_NVR: synce4l-1.1.0-5.el10
 ```

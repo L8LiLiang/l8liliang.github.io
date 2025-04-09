@@ -516,3 +516,26 @@ git lfs version
 git lfs uninstall
 
 ```
+
+##  squash commits
+```
+git checkout main
+git merge --squash feature-branch
+git commit -m "Squashed feature branch"
+```
+
+## delete branch
+```
+安全删除（已合并的分支）
+git branch -d <branch-name>
+
+强制删除（未合并的分支）
+git branch -D <branch-name>
+
+
+2. 删除远程分支
+git push <remote-name> --delete <branch-name>
+or
+git push origin :feature-payment
+
+```
