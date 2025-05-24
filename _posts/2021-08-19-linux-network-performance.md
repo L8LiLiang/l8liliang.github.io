@@ -462,7 +462,266 @@ done
 
 echo total: $total_bw
 
+# update 2025-05-24
+[root@dell-per750-70 ~]# cat server.sh 
+cpu=0
+for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
+        taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+	let cpu+=2
+        #if((port%2));then
+	#	numactl --cpubind=netdev:ens4f0 --membind=netdev:ens4f0 iperf3 -s -D -p $port -B 199.2.2.1 &> log$port &
+	#else
+	#	numactl --cpubind=netdev:ens4f1 --membind=netdev:ens4f1 iperf3 -s -D -p $port -B 199.3.3.1 &> log$port &
+	#fi
+        #iperf3 -s -D -p $port &> log$port &
+done
 
+# 使用numactl和taskset的时候，iperf3进程数量超过6个的时候，有的进程cpu占用很高，导致性能下降。启动5个是最好的。
+# 不使用numactl和taskset的时候，启动7,8个是最好的。
+[root@dell-per750-10 ~]# cat numa.sh 
+cpu=0
+for port in 5201 5202 5203 5204 5205;do # 108 Gbps
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        if((port%2));then
+                numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        else
+                numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        fi
+        #if((port%2));then
+        #        taskset -c $cpu iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #else
+        #        taskset -c $cpu iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #fi
+	let cpu+=2
+        #numactl --cpunodebind=0 --membind=0 iperf3 -c 199.2.2.1 -t 30 -P 1 -p $port &> log$port &
+        #iperf3 -c 199.2.2.2 -t 30 -P 1 -p $port &> log$port &
+done
+
+wait
+
+total_bw=0
+for port in 5201 5202 5203 5204 5205;do
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+        bw=$(cat log$port | grep receiver | egrep -o "[0-9.]+ Gbits/sec"| awk '{print $1}')
+        echo stream$port: $bw
+        total_bw=$(echo $total_bw+$bw | bc -l)
+done
+
+echo total: $total_bw
+
+[root@dell-per750-10 ~]# cat taskset.sh
+cpu=0
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
+#for port in 5201 5202 5203 5204 5205 5206;do 
+for port in 5201 5202 5203 5204 5205;do  # 108 Gbps
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #if((port%2));then
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #else
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #fi
+        if((port%2));then
+                taskset -c $cpu iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        else
+                taskset -c $cpu iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        fi
+	let cpu+=2
+        #numactl --cpunodebind=0 --membind=0 iperf3 -c 199.2.2.1 -t 30 -P 1 -p $port &> log$port &
+        #iperf3 -c 199.2.2.2 -t 30 -P 1 -p $port &> log$port &
+done
+
+wait
+
+total_bw=0
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
+#for port in 5201 5202 5203 5204 5205 5206;do 
+for port in 5201 5202 5203 5204 5205;do 
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+        bw=$(cat log$port | grep receiver | egrep -o "[0-9.]+ Gbits/sec"| awk '{print $1}')
+        echo stream$port: $bw
+        total_bw=$(echo $total_bw+$bw | bc -l)
+done
+
+echo total: $total_bw
+
+[root@dell-per750-10 ~]# cat client.sh
+cpu=0
+opt="-l 128K"
+opt=""
+for port in 5201 5202 5203 5204 5205 5206 5207 5208;do # 115 Gbps
+#for port in 5201 5202 5203 5204 5205 5206 5207;do  # 115
+#for port in 5201 5202 5203 5204 5205 5206;do 
+#for port in 5201 5202 5203 5204 5205;do 
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do # 85
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do # 102
+        #if((port%2));then
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #else
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #fi
+        if((port%2));then
+                iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port $opt &> log$port &
+        else
+                iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port $opt &> log$port &
+        fi
+	let cpu+=2
+        #numactl --cpunodebind=0 --membind=0 iperf3 -c 199.2.2.1 -t 30 -P 1 -p $port &> log$port &
+        #iperf3 -c 199.2.2.2 -t 30 -P 1 -p $port &> log$port &
+done
+
+wait
+
+total_bw=0
+for port in 5201 5202 5203 5204 5205 5206 5207 5208;do # 115
+#for port in 5201 5202 5203 5204 5205 5206 5207;do  # 115
+#for port in 5201 5202 5203 5204 5205 5206;do 
+#for port in 5201 5202 5203 5204 5205;do 
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do # 85
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do # 102
+        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+        bw=$(cat log$port | grep receiver | egrep -o "[0-9.]+ Gbits/sec"| awk '{print $1}')
+        echo stream$port: $bw
+        total_bw=$(echo $total_bw+$bw | bc -l)
+done
+
+echo total: $total_bw
+
+```
+
+## bonding performance cfg
+```
+[root@dell-per750-70 ~]# cat re
+swcfg setup_port_channel 9364 "Eth1/45 Eth1/46" active
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer3+4
+ip link set bond0 up
+ifenslave bond0 ens2f0 ens2f1
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set bond0 master br0
+ip link add name veth0 type veth peer name veth1
+ip link add name veth2 type veth peer name veth3
+ip netns add ns1
+ip netns add ns2
+ip link set veth0 up
+ip link set veth0 master br0
+ip link set veth1 netns ns1 up
+ip netns exec ns1 ip addr add 199.111.1.7/24 dev veth1
+ip link set veth2 up
+ip link set veth2 master br0
+ip link set veth3 netns ns2 up
+ip netns exec ns2 ip addr add 199.111.1.8/24 dev veth3
+ip link set bond0 mtu 9000
+ip link set veth0 mtu 9000
+ip netns exec ns1 ip link set veth1 mtu 9000
+ip link set veth2 mtu 9000
+ip netns exec ns2 ip link set veth3 mtu 9000
+
+ip link add link bond0 name bond0.3 type vlan id 3
+ip link set bond0 nomaster
+ip link set bond0.3 master br0
+ip link set bond0.3 up
+ip link set bond0.3 mtu 9000
+
+[root@dell-per750-70 ~]# cat server.sh 
+cpu=0
+for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
+	if ((port%2));then
+        	ip netns exec ns1 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+	else
+        	ip netns exec ns2 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+	fi
+	let cpu+=2
+        #if((port%2));then
+	#	numactl --cpubind=netdev:ens4f0 --membind=netdev:ens4f0 iperf3 -s -D -p $port -B 199.2.2.1 &> log$port &
+	#else
+	#	numactl --cpubind=netdev:ens4f1 --membind=netdev:ens4f1 iperf3 -s -D -p $port -B 199.3.3.1 &> log$port &
+	#fi
+        #iperf3 -s -D -p $port &> log$port &
+done
+
+# bonding without vlan
+[root@dell-per750-10 ~]# cat re
+swcfg setup_port_channel 9364 "Eth1/61 Eth1/62" active
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer3+4
+ip link set bond0 up
+ifenslave bond0 ens2f0np0 ens2f1np1
+ip addr add 199.111.1.1/24 dev bond0
+#ip link add name br0 type bridge
+#ip link set br0 up
+#ip link set bond0 master br0
+#ip link add name veth0 type veth peer name veth1
+#ip link add name veth2 type veth peer name veth3
+#ip netns add ns1
+#ip netns add ns2
+#ip link set veth0 up
+#ip link set veth0 master br0
+#ip link set veth1 netns ns1 up
+#ip netns exec ns1 ip addr add 199.111.1.7/24 dev veth1
+#ip link set veth2 up
+#ip link set veth2 master br0
+#ip link set veth3 netns ns2 up
+#ip netns exec ns2 ip addr add 199.111.1.8/24 dev veth3
+
+# vlan over physical port
+[root@dell-per750-10 ~]# cat rr
+ip addr flush ens2f0np0
+ip addr flush ens2f1np1
+ip link add link ens2f0np0 name ens2f0np0.3 type vlan id 3
+ip link set ens2f0np0.3 mtu 9000
+ip link add link ens2f1np1 name ens2f1np1.3 type vlan id 3
+ip link set ens2f1np1.3 mtu 9000
+ip addr add 199.111.2.1/24 dev ens2f0np0.3
+ip addr add 199.111.3.1/24 dev ens2f1np1.3
+ip link set ens2f0np0.3 up
+ip link set ens2f1np1.3 up
+
+[root@dell-per750-10 ~]# cat client.sh
+cpu=0
+opt="-l 128K"
+opt=""
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do # 108
+for port in 5201 5202 5203 5204 5205 5206 5207;do  # 114
+#for port in 5201 5202 5203 5204 5205 5206;do 
+#for port in 5201 5202 5203 5204 5205;do 
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do # 85
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do # 102
+        #if((port%2));then
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #else
+        #        numactl --cpunodebind=0 --membind=0 iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port &> log$port &
+        #fi
+        if((port%2));then
+                iperf3 -c 199.111.2.2 -f g -t 30 -P 1 -p $port $opt &> log$port &
+        else
+                iperf3 -c 199.111.3.2 -f g -t 30 -P 1 -p $port $opt &> log$port &
+        fi
+	let cpu+=2
+        #numactl --cpunodebind=0 --membind=0 iperf3 -c 199.2.2.1 -t 30 -P 1 -p $port &> log$port &
+        #iperf3 -c 199.2.2.2 -t 30 -P 1 -p $port &> log$port &
+done
+
+wait
+
+total_bw=0
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do # 108
+for port in 5201 5202 5203 5204 5205 5206 5207;do  # 114
+#for port in 5201 5202 5203 5204 5205 5206;do 
+#for port in 5201 5202 5203 5204 5205;do 
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do # 85
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do # 102
+        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+        bw=$(cat log$port | grep receiver | egrep -o "[0-9.]+ Gbits/sec"| awk '{print $1}')
+        echo stream$port: $bw
+        total_bw=$(echo $total_bw+$bw | bc -l)
+done
+
+echo total: $total_bw
 ```
 
 ### irqbalance  
