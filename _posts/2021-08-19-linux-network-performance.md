@@ -593,7 +593,7 @@ echo total: $total_bw
 
 ```
 
-## bonding performance cfg
+### bonding performance cfg
 ```
 [root@dell-per750-70 ~]# cat re
 swcfg setup_port_channel 9364 "Eth1/45 Eth1/46" active
@@ -722,6 +722,172 @@ for port in 5201 5202 5203 5204 5205 5206 5207;do  # 114
 done
 
 echo total: $total_bw
+```
+
+### lacp bonding layer2+3 hash -P
+```
+# server
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens3f0np0 ens3f1np1
+iperf3 -s -D
+ip addr add 199.111.1.2/24 dev bond0
+
+
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set bond0 master br0
+
+
+ip netns add ns1
+ip netns add ns2
+ip link add name veth0 type veth peer name veth1
+ip link add name veth2 type veth peer name veth3
+ip link set veth0 up
+ip link set veth1 netns ns1 up
+ip link set veth2 up
+ip link set veth3 netns ns2 up
+ip link set veth0 master br0
+ip link set veth2 master br0
+ip netns exec ns1 ip link set veth1 address 62:e4:5e:36:65:08
+ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:65:0a
+ip netns exec ns1 ip addr add 199.111.1.3/24 dev veth1
+ip netns exec ns2 ip addr add 199.111.1.4/24 dev veth3
+ip netns exec ns1 iperf3 -s -D
+ip netns exec ns2 iperf3 -s -D
+
+# client
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens1f0np0 ens1f1np1
+ip addr add 199.111.1.1/24 dev bond0
+```
+
+### lacp bonding layer2+3 hash multiple iperf3 processes
+```
+# server
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens3f0np0 ens3f1np1
+iperf3 -s -D
+ip addr add 199.111.1.2/24 dev bond0
+
+
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set bond0 master br0
+
+
+ip netns add ns1
+ip netns add ns2
+ip link add name veth0 type veth peer name veth1
+ip link add name veth2 type veth peer name veth3
+ip link set veth0 up
+ip link set veth1 netns ns1 up
+ip link set veth2 up
+ip link set veth3 netns ns2 up
+ip link set veth0 master br0
+ip link set veth2 master br0
+ip netns exec ns1 ip link set veth1 address 62:e4:5e:36:65:08
+ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:65:0a
+ip netns exec ns1 ip addr add 199.111.1.3/24 dev veth1
+ip netns exec ns2 ip addr add 199.111.1.4/24 dev veth3
+ip netns exec ns1 iperf3 -s -D
+ip netns exec ns2 iperf3 -s -D
+[root@dell-per740-91 ~]# cat setup.sh 
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens3f0np0 ens3f1np1
+
+
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set bond0 master br0
+
+
+for iii in {1..16};do
+	ip netns add ns${iii}
+	ip link add name ns${iii}_veth0 type veth peer name ns${iii}_veth1
+	ip link set ns${iii}_veth0 up
+	ip link set ns${iii}_veth1 netns ns${iii} up
+	ip link set ns${iii}_veth0 master br0
+	ip netns exec ns${iii} ip link set ns${iii}_veth1 address $(printf 64:%02x:88:36:02:02 ${iii})
+	ip netns exec ns${iii} ip addr add 199.${iii}.111.${iii}/24 dev ns${iii}_veth1
+	ip netns exec ns${iii} iperf3 -s -D
+done
+
+# cleanup
+#!/bin/bash
+
+modprobe -r bonding
+ip link del br0
+pkill iperf3
+for iii in {1..16};do
+	ip netns del ns${iii}
+	ip link del ns${iii}_veth0 &>/dev/null
+	ip link del ns${iii}_veth1 &>/dev/null
+done
+
+# client
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens1f0np0 ens1f1np1
+ip addr add 199.111.1.1/24 dev bond0
+[root@dell-per740-83 ~]# cat setup.sh 
+modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
+ip link set bond0 up
+ifenslave bond0 ens1f0np0 ens1f1np1
+
+
+ip link add name br0 type bridge
+ip link set br0 up
+ip link set bond0 master br0
+
+
+for iii in {1..16};do
+        ip netns add ns${iii}
+        ip link add name ns${iii}_veth0 type veth peer name ns${iii}_veth1
+        ip link set ns${iii}_veth0 up
+        ip link set ns${iii}_veth1 netns ns${iii} up
+        ip link set ns${iii}_veth0 master br0
+        ip netns exec ns${iii} ip link set ns${iii}_veth1 address $(printf 62:%02x:88:36:02:02 ${iii})
+	ip netns exec ns${iii} ip addr add 199.${iii}.111.100/24 dev ns${iii}_veth1
+        ip netns exec ns${iii} iperf3 -s -D
+done
+
+timeout 90s bash -c "until ip netns exec ns1 ping 199.1.111.1 -c5;do sleep 5;done"
+
+#for iii in {1..8};do
+#	ip netns exec ns${iii} ping 199.111.111.${iii} -c5
+#done
+
+
+# client iperf
+#!/bin/bash
+
+time=20
+total_result=0
+
+for loop in {0..2};do
+	loop_total_result=0
+	for iii in {1..4};do
+		ip netns exec ns${iii} iperf3 -c 199.${iii}.111.${iii} -u -b 0 -t $time -P 1 -f k &> p${iii}.log &
+	done
+	wait
+	for iii in {1..4};do
+		res=$(cat p${iii}.log | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+		echo "Loop$loop iperf process $iii result is $res Kbits/sec"
+		let loop_total_result+=res
+	done
+	echo "Loop$loop total result is $loop_total_result"
+	let total_result+=loop_total_result
+done
+
+echo total result is: $total_result Kbits/sec
+echo avg result is : $((total_result/3)) Kbits/sec
+
+# client clean
+
 ```
 
 ### irqbalance  
