@@ -724,13 +724,198 @@ done
 echo total: $total_bw
 ```
 
-### lacp bonding layer2+3 hash -P
+### limit iperf3 cpu usage
 ```
-# server
+#!/bin/bash
+# 当你想要进行性能比对，比如在两个kernel之间做对比，现在cpu可以是测试结果更稳定
+# 下面的设置中，这个group中所有进程共享40%的cpu，如果只有四个进程活跃，那么每个进程使用10% cpu
+# cgroup cpu usage configuration
+CGROUP_CPU_QUOTA=${CGROUP_CPU_QUOTA:-4000}
+CGROUP_CPU_PERIOD=${CGROUP_CPU_PERIOD:-10000}
+CGROUP_CPU_QUOTA=4000
+CGROUP_CPU_PERIOD=10000
+
+limit_cpu_usage()
+{
+	local pid=$1
+	# Configure CPU bandwidth to achieve resource restrictions within the control group:
+	# The first value is the allowed time quota in microseconds for which all processes collectively in a child group can run during one period. 
+	# The second value specifies the length of the period.
+	local cpu_quota=$2
+	local cpu_period=$3
+
+	if mount -l | grep -q cgroup2;then
+		local cgroup_dir=$(mount -l | grep cgroup2 | awk '{print $3}' | head -n1)
+		
+		# Configure the system to mount cgroups-v2 by default during system boot by the systemd system and service manager:
+		# grubby --update-kernel=/boot/vmlinuz-$(uname -r) --args="systemd.unified_cgroup_hierarchy=1"
+		# grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"
+		
+		# Enable CPU-related controllers for children groups:
+		echo "+cpu" >> $cgroup_dir/cgroup.subtree_control
+		echo "+cpuset" >> $cgroup_dir/cgroup.subtree_control
+		
+		# Create sub group
+		mkdir $cgroup_dir/sub_g1
+		# Enable the CPU-related controllers in /sys/fs/cgroup/sub_g1/ to obtain controllers that are relevant only to CPU:
+		echo "+cpu" >> $cgroup_dir/sub_g1/cgroup.subtree_control
+		echo "+cpuset" >> $cgroup_dir/sub_g1/cgroup.subtree_control
+		
+		# Create sub group
+		mkdir $cgroup_dir/sub_g1/tasks
+		
+		# set usable cpus
+		# 使用和port在同一个numa node的cpu性能会高一些
+		echo "4" > $cgroup_dir/sub_g1/tasks/cpuset.cpus
+		
+		# Configure CPU bandwidth to achieve resource restrictions within the control group:
+		# The first value is the allowed time quota in microseconds for which all processes collectively in a child group can run during one period. 
+		# The second value specifies the length of the period.
+		# This command sets CPU time distribution controls so that all processes collectively in the /sys/fs/cgroup/sub_g1/tasks child group can run on the CPU for only 10% 
+		# That is, one fifth of each second.
+		# echo "1000 10000" > $cgroup_dir/sub_g1/tasks/cpu.max
+		echo "$cpu_quota $cpu_period" > $cgroup_dir/sub_g1/tasks/cpu.max
+		
+		# Add the applications' PIDs to the child group:
+		echo "$pid" > $cgroup_dir/sub_g1/tasks/cgroup.procs
+	elif mount -l | grep -q cgroup;then
+		local cgroup_dir=$(mount -l | grep "tmpfs on.*cgroup" | awk '{print $3}')
+		mkdir $cgroup_dir/cpu/sub_g1
+		echo "$cpu_period" > $cgroup_dir/cpu/sub_g1/cpu.cfs_period_us
+		echo "$cpu_quota" > $cgroup_dir/cpu/sub_g1/cpu.cfs_quota_us
+
+		# Add the applications' PIDs to the child group:
+		echo "$pid" > $cgroup_dir/cpu/sub_g1/cgroup.procs
+
+	else
+		echo "cgroup not found"
+		return 1
+	fi
+	# Verify that the applications run in the specified control group:
+	cat /proc/$pid/cgroup
+	
+}
+
+# pkill iperf3 before call this func
+undo_limit_cpu_usage()
+{
+	#local pid=$1
+	if mount -l | grep -q cgroup2;then
+		local cgroup_dir=$(mount -l | grep cgroup2 | awk '{print $3}' | head -n1)
+		# detach process
+		#echo $pid > $cgroup_dir/cgroup.procs
+		# rm cgroup dir
+		rmdir $cgroup_dir/sub_g1/tasks
+		rmdir $cgroup_dir/sub_g1
+	elif mount -l | grep -q cgroup;then
+	local cgroup_dir=$(mount -l | grep "tmpfs on.*cgroup" | awk '{print $3}')
+		# process must terminate or can't delete cgroup
+		#kill -9 $pid
+		# rm cgroup dir
+	rmdir $cgroup_dir/cpu/sub_g1
+	else
+		echo "cgroup not found"
+	fi
+}
+
+
+for ppp in $(pgrep iperf3);do
+	limit_cpu_usage $ppp $CGROUP_CPU_QUOTA $CGROUP_CPU_PERIOD
+done
+```
+
+### limit multiple iperf3 cpu usage
+```
+#!/bin/bash
+
+# cgroup cpu usage configuration
+CGROUP_CPU_QUOTA=${CGROUP_CPU_QUOTA:-4000}
+CGROUP_CPU_PERIOD=${CGROUP_CPU_PERIOD:-10000}
+CGROUP_CPU_QUOTA=200000
+CGROUP_CPU_PERIOD=1000000
+CGROUP_CPU_QUOTA=2000
+CGROUP_CPU_PERIOD=10000
+
+limit_iperf3_cpu_usage()
+{
+	# Configure CPU bandwidth to achieve resource restrictions within the control group:
+	# The first value is the allowed time quota in microseconds for which all processes collectively in a child group can run during one period. 
+	# The second value specifies the length of the period.
+	local cpu_quota=$CGROUP_CPU_QUOTA
+	local cpu_period=$CGROUP_CPU_PERIOD
+
+	if mount -l | grep -q cgroup2;then
+		local cgroup_dir=$(mount -l | grep cgroup2 | awk '{print $3}' | head -n1)
+		
+		# Configure the system to mount cgroups-v2 by default during system boot by the systemd system and service manager:
+		# grubby --update-kernel=/boot/vmlinuz-$(uname -r) --args="systemd.unified_cgroup_hierarchy=1"
+		# grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"
+		
+		# Enable CPU-related controllers for children groups:
+		echo "+cpu" >> $cgroup_dir/cgroup.subtree_control
+		echo "+cpuset" >> $cgroup_dir/cgroup.subtree_control
+		
+		# Create sub group
+		mkdir $cgroup_dir/iperf3
+		# Enable the CPU-related controllers in /sys/fs/cgroup/iperf3/ to obtain controllers that are relevant only to CPU:
+		echo "+cpu" >> $cgroup_dir/iperf3/cgroup.subtree_control
+		echo "+cpuset" >> $cgroup_dir/iperf3/cgroup.subtree_control
+		# set usable cpus
+		echo "4" > $cgroup_dir/iperf3/cpuset.cpus
+		# Configure CPU bandwidth to achieve resource restrictions within the control group:
+		# The first value is the allowed time quota in microseconds for which all processes collectively in a child group can run during one period. 
+		# The second value specifies the length of the period.
+		# This command sets CPU time distribution controls so that all processes collectively in the /sys/fs/cgroup/iperf3/tasks child group can run on the CPU for only 10% 
+		# That is, one fifth of each second.
+		# echo "1000 10000" > $cgroup_dir/iperf3/tasks/cpu.max
+		echo "$cpu_quota $cpu_period" > $cgroup_dir/iperf3/cpu.max
+		
+		for pid in $(pgrep iperf3);do
+			# Create sub group
+			mkdir $cgroup_dir/iperf3/tasks${pid}
+			echo "50" > $cgroup_dir/iperf3/tasks${pid}/cpu.weight
+			# Add the applications' PIDs to the child group:
+			echo "$pid" > $cgroup_dir/iperf3/tasks${pid}/cgroup.procs
+		done
+	else
+		echo "cgroup not found"
+		return 1
+	fi
+	# Verify that the applications run in the specified control group:
+	for pid in $(pgrep iperf3);do
+		cat /proc/$pid/cgroup
+	done
+	
+}
+
+undo_limit_iperf3_cpu_usage()
+{
+	#local pid=$1
+	if mount -l | grep -q cgroup2;then
+		local cgroup_dir=$(mount -l | grep cgroup2 | awk '{print $3}' | head -n1)
+		# detach process
+		#echo $pid > $cgroup_dir/cgroup.procs
+		# rm cgroup dir
+		for pid in $(pgrep iperf3);do
+			kill -9 $pid
+			sleep 1
+			rmdir $cgroup_dir/iperf3/tasks${pid}
+		done
+		rmdir $cgroup_dir/iperf3
+	else
+		echo "cgroup not found"
+	fi
+}
+```
+
+
+### 不同kernel之间性能比对
+lacp bonding layer2+3 hash 2netns
+```
+#### server
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
 ifenslave bond0 ens3f0np0 ens3f1np1
-iperf3 -s -D
 ip addr add 199.111.1.2/24 dev bond0
 
 
@@ -753,48 +938,99 @@ ip netns exec ns1 ip link set veth1 address 62:e4:5e:36:65:08
 ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:65:0a
 ip netns exec ns1 ip addr add 199.111.1.3/24 dev veth1
 ip netns exec ns2 ip addr add 199.111.1.4/24 dev veth3
-ip netns exec ns1 iperf3 -s -D
-ip netns exec ns2 iperf3 -s -D
+#ip netns exec ns1 iperf3 -s -D
+#ip netns exec ns2 iperf3 -s -D
 
-# client
+#ip link set bond0 mtu 9000
+#ip link set br0 mtu 9000
+#ip link set veth0 mtu 9000
+#ip link set veth2 mtu 9000
+#ip netns exec ns1 ip link set veth1 mtu 9000
+#ip netns exec ns2 ip link set veth3 mtu 9000
+
+cpu=0
+for port in {5201..5202};do
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do 
+	if ((port%2));then
+        	#ip netns exec ns1 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+        	ip netns exec ns1 iperf3 -s -D -p $port &> log$port &
+	else
+        	#ip netns exec ns2 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+        	ip netns exec ns2 iperf3 -s -D -p $port &> log$port &
+	fi
+	let cpu+=2
+done
+
+#### client
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
 ifenslave bond0 ens1f0np0 ens1f1np1
 ip addr add 199.111.1.1/24 dev bond0
+
+#ip link set bond0 mtu 9000
+
+#### cilent iperf3
+# iperf -P 1保证每个进程使用100%的cpu，如果-P 4的话，会使用400%的cpu
+cpu=0
+opt="-l 128K"
+opt=""
+time=60
+cpu=0
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
+#for port in 5201 5202 5203 5204;do 
+for port in 5201 5202;do
+#for port in {50000..50047};do
+        if((port%2));then
+                #taskset -c $cpu iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+        else
+                #taskset -c $cpu iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+        fi
+	let cpu+=2
+done
+
+wait
+
+total_bw=0
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
+#for port in 5201 5202 5203 5204;do 
+for port in 5201 5202;do
+#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+#for port in {50000..50047};do
+        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+	bw=$(cat log$port | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+        echo stream$port: $bw
+        [ -n "$bw" ] && total_bw=$(echo $total_bw+$bw | bc -l)
+done
+
+echo total: $total_bw Kbits/sec
+
+
+#### client iperf3 - 2
+#!/bin/bash
+
+time=300
+total_result=0
+
+for loop in {0..2};do
+	iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 8 -f k &> p1.log &
+	iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 8 -f k &> p2.log &
+	wait
+	res1=$(cat p1.log | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+	res2=$(cat p2.log | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+	echo "Loop $loop result is $((res1+res2)) Kbits/sec"
+	let total_result+=$((res1+res2))
+done
+
+echo total result is: $total_result Kbits/sec
+echo avg result is : $((total_result/3)) Kbits/sec
 ```
 
-### lacp bonding layer2+3 hash multiple iperf3 processes
+### 不同kenrel之间性能比对
+lacp bonding layer2+3 hash 16netns
 ```
-# server
-modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
-ip link set bond0 up
-ifenslave bond0 ens3f0np0 ens3f1np1
-iperf3 -s -D
-ip addr add 199.111.1.2/24 dev bond0
-
-
-ip link add name br0 type bridge
-ip link set br0 up
-ip link set bond0 master br0
-
-
-ip netns add ns1
-ip netns add ns2
-ip link add name veth0 type veth peer name veth1
-ip link add name veth2 type veth peer name veth3
-ip link set veth0 up
-ip link set veth1 netns ns1 up
-ip link set veth2 up
-ip link set veth3 netns ns2 up
-ip link set veth0 master br0
-ip link set veth2 master br0
-ip netns exec ns1 ip link set veth1 address 62:e4:5e:36:65:08
-ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:65:0a
-ip netns exec ns1 ip addr add 199.111.1.3/24 dev veth1
-ip netns exec ns2 ip addr add 199.111.1.4/24 dev veth3
-ip netns exec ns1 iperf3 -s -D
-ip netns exec ns2 iperf3 -s -D
-[root@dell-per740-91 ~]# cat setup.sh 
+#### server
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
 ifenslave bond0 ens3f0np0 ens3f1np1
@@ -816,7 +1052,7 @@ for iii in {1..16};do
 	ip netns exec ns${iii} iperf3 -s -D
 done
 
-# cleanup
+#### cleanup
 #!/bin/bash
 
 modprobe -r bonding
@@ -828,7 +1064,7 @@ for iii in {1..16};do
 	ip link del ns${iii}_veth1 &>/dev/null
 done
 
-# client
+#### client
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
 ifenslave bond0 ens1f0np0 ens1f1np1
@@ -862,7 +1098,7 @@ timeout 90s bash -c "until ip netns exec ns1 ping 199.1.111.1 -c5;do sleep 5;don
 #done
 
 
-# client iperf
+#### client iperf
 #!/bin/bash
 
 time=20
@@ -870,11 +1106,11 @@ total_result=0
 
 for loop in {0..2};do
 	loop_total_result=0
-	for iii in {1..4};do
+	for iii in {1..8};do
 		ip netns exec ns${iii} iperf3 -c 199.${iii}.111.${iii} -u -b 0 -t $time -P 1 -f k &> p${iii}.log &
 	done
 	wait
-	for iii in {1..4};do
+	for iii in {1..8};do
 		res=$(cat p${iii}.log | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
 		echo "Loop$loop iperf process $iii result is $res Kbits/sec"
 		let loop_total_result+=res
@@ -886,7 +1122,6 @@ done
 echo total result is: $total_result Kbits/sec
 echo avg result is : $((total_result/3)) Kbits/sec
 
-# client clean
 
 ```
 
