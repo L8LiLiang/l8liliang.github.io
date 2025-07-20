@@ -426,6 +426,7 @@ any NUMA locality, such as a PCI bridge.
 
 使用numactl把进程绑定到网卡所属numa
 ```
+# iperf3 server
 [root@dell-per740-05 ~]# cat server 
 for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
         #numactl --cpubind=1 --membind=1 iperf3 -s -D -p $port &> log$port &
@@ -437,6 +438,23 @@ for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 521
         #iperf3 -s -D -p $port &> log$port &
 done
 
+# added 2025-05-24
+# use taskset
+[root@dell-per750-70 ~]# cat server.sh 
+cpu=0
+for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
+        #numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
+        taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+	let cpu+=2
+        #if((port%2));then
+	#	numactl --cpubind=netdev:ens4f0 --membind=netdev:ens4f0 iperf3 -s -D -p $port -B 199.2.2.1 &> log$port &
+	#else
+	#	numactl --cpubind=netdev:ens4f1 --membind=netdev:ens4f1 iperf3 -s -D -p $port -B 199.3.3.1 &> log$port &
+	#fi
+        #iperf3 -s -D -p $port &> log$port &
+done
+
+# client use numactl
 [root@dell-per740-05 ~]# cat client
 for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
 #for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
@@ -462,20 +480,6 @@ done
 
 echo total: $total_bw
 
-# update 2025-05-24
-[root@dell-per750-70 ~]# cat server.sh 
-cpu=0
-for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
-        #numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
-        taskset -c $cpu iperf3 -s -D -p $port &> log$port &
-	let cpu+=2
-        #if((port%2));then
-	#	numactl --cpubind=netdev:ens4f0 --membind=netdev:ens4f0 iperf3 -s -D -p $port -B 199.2.2.1 &> log$port &
-	#else
-	#	numactl --cpubind=netdev:ens4f1 --membind=netdev:ens4f1 iperf3 -s -D -p $port -B 199.3.3.1 &> log$port &
-	#fi
-        #iperf3 -s -D -p $port &> log$port &
-done
 
 # 使用numactl和taskset的时候，iperf3进程数量超过6个的时候，有的进程cpu占用很高，导致性能下降。启动5个是最好的。
 # 不使用numactl和taskset的时候，启动7,8个是最好的。
@@ -513,6 +517,7 @@ done
 
 echo total: $total_bw
 
+# client use taskset
 [root@dell-per750-10 ~]# cat taskset.sh
 cpu=0
 #for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210;do
@@ -549,6 +554,7 @@ done
 
 echo total: $total_bw
 
+# client use nothing
 [root@dell-per750-10 ~]# cat client.sh
 cpu=0
 opt="-l 128K"
@@ -591,6 +597,13 @@ done
 
 echo total: $total_bw
 
+```
+
+### 测试lacp bonding性能的时候，一定要确定交换机每次都可以load balance，
+```
+e.g. on cisco 93180 
+port-channel load-balance src ip-l4port
+port-channel load-balance dst ip-l4port 
 ```
 
 ### bonding performance cfg
@@ -645,7 +658,7 @@ for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 521
         #iperf3 -s -D -p $port &> log$port &
 done
 
-# bonding without vlan
+# client: bonding without vlan
 [root@dell-per750-10 ~]# cat re
 swcfg setup_port_channel 9364 "Eth1/61 Eth1/62" active
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer3+4
@@ -668,7 +681,7 @@ ip addr add 199.111.1.1/24 dev bond0
 #ip link set veth3 netns ns2 up
 #ip netns exec ns2 ip addr add 199.111.1.8/24 dev veth3
 
-# vlan over physical port
+# client: vlan over physical port
 [root@dell-per750-10 ~]# cat rr
 ip addr flush ens2f0np0
 ip addr flush ens2f1np1
@@ -727,7 +740,7 @@ echo total: $total_bw
 ### limit iperf3 cpu usage
 ```
 #!/bin/bash
-# 当你想要进行性能比对，比如在两个kernel之间做对比，现在cpu可以是测试结果更稳定
+# 当你想要进行性能比对，比如在两个kernel之间做对比，限制cpu可以是测试结果更稳定
 # 下面的设置中，这个group中所有进程共享40%的cpu，如果只有四个进程活跃，那么每个进程使用10% cpu
 # cgroup cpu usage configuration
 CGROUP_CPU_QUOTA=${CGROUP_CPU_QUOTA:-4000}
@@ -913,6 +926,8 @@ undo_limit_iperf3_cpu_usage()
 lacp bonding layer2+3 hash 2netns
 ```
 #### server
+
+# 此配置适配cisco 93180 port-channel load-balance dst mac
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
 ifenslave bond0 ens3f0np0 ens3f1np1
@@ -935,22 +950,21 @@ ip link set veth3 netns ns2 up
 ip link set veth0 master br0
 ip link set veth2 master br0
 ip netns exec ns1 ip link set veth1 address 62:e4:5e:36:65:08
-ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:65:0a
+ip netns exec ns2 ip link set veth3 address 62:e4:5e:36:66:0a
 ip netns exec ns1 ip addr add 199.111.1.3/24 dev veth1
 ip netns exec ns2 ip addr add 199.111.1.4/24 dev veth3
 #ip netns exec ns1 iperf3 -s -D
 #ip netns exec ns2 iperf3 -s -D
 
-#ip link set bond0 mtu 9000
-#ip link set br0 mtu 9000
-#ip link set veth0 mtu 9000
-#ip link set veth2 mtu 9000
-#ip netns exec ns1 ip link set veth1 mtu 9000
-#ip netns exec ns2 ip link set veth3 mtu 9000
+ip link set bond0 mtu 9000
+ip link set br0 mtu 9000
+ip link set veth0 mtu 9000
+ip link set veth2 mtu 9000
+ip netns exec ns1 ip link set veth1 mtu 9000
+ip netns exec ns2 ip link set veth3 mtu 9000
 
 cpu=0
-for port in {5201..5202};do
-#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do 
+for port in {5201..5220};do
 	if ((port%2));then
         	#ip netns exec ns1 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
         	ip netns exec ns1 iperf3 -s -D -p $port &> log$port &
@@ -971,21 +985,24 @@ ip addr add 199.111.1.1/24 dev bond0
 
 #### cilent iperf3
 # iperf -P 1保证每个进程使用100%的cpu，如果-P 4的话，会使用400%的cpu
+# 注意使用适当的-b参数值
 cpu=0
 opt="-l 128K"
 opt=""
-time=60
+time=20
 cpu=0
 #for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
 #for port in 5201 5202 5203 5204;do 
-for port in 5201 5202;do
-#for port in {50000..50047};do
+#for port in 5201 5202;do
+for port in {5201..5215};do
         if((port%2));then
                 #taskset -c $cpu iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
-                iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.3 -u -b 20G -t $time -P 1 -f k -p $port  &> log$port &
+                #iperf3 -c 199.111.1.3 -t $time -P 1 -f k -p $port  &> log$port &
         else
                 #taskset -c $cpu iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
-                iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.4 -u -b 20G -t $time -P 1 -f k -p $port  &> log$port &
+                #iperf3 -c 199.111.1.4 -t $time -P 1 -f k -p $port  &> log$port &
         fi
 	let cpu+=2
 done
@@ -995,9 +1012,9 @@ wait
 total_bw=0
 #for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
 #for port in 5201 5202 5203 5204;do 
-for port in 5201 5202;do
+#for port in 5201 5202;do
 #for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
-#for port in {50000..50047};do
+for port in {5201..5215};do
         #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
 	bw=$(cat log$port | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
         echo stream$port: $bw
@@ -1005,7 +1022,6 @@ for port in 5201 5202;do
 done
 
 echo total: $total_bw Kbits/sec
-
 
 #### client iperf3 - 2
 #!/bin/bash
