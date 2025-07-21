@@ -604,6 +604,7 @@ echo total: $total_bw
 e.g. on cisco 93180 
 port-channel load-balance src ip-l4port
 port-channel load-balance dst ip-l4port 
+port-channel load-balance dst mac
 ```
 
 ### bonding performance cfg
@@ -963,16 +964,160 @@ ip link set veth2 mtu 9000
 ip netns exec ns1 ip link set veth1 mtu 9000
 ip netns exec ns2 ip link set veth3 mtu 9000
 
-cpu=0
-for port in {5201..5220};do
-	if ((port%2));then
-        	#ip netns exec ns1 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
-        	ip netns exec ns1 iperf3 -s -D -p $port &> log$port &
-	else
-        	#ip netns exec ns2 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
-        	ip netns exec ns2 iperf3 -s -D -p $port &> log$port &
-	fi
-	let cpu+=2
+# numactl 比taskset好用，是最佳实践
+# 因为绑定到某个cpu会导致很多问题
+将 iperf3 进程通过 taskset 绑定到特定的 CPU 核心后吞吐量反而下降，这通常是由于以下一个或多个原因造成的：
+
+1. NUMA（非统一内存访问）架构问题 (最常见原因):
+
+现代服务器通常有多个 CPU 插槽（Socket），每个插槽有自己的本地内存（Local Memory）。访问本地内存速度最快，访问其他插槽的内存（Remote Memory）速度显著变慢。
+
+网卡（NIC）通常物理连接到特定的 CPU 插槽上，并优先使用该插槽的本地内存。
+
+如果你将 iperf3 绑定到了与网卡不属于同一个 NUMA 节点的 CPU 核心上：
+
+网卡接收到的数据包会首先存入其本地 NUMA 节点的内存。
+
+iperf3 进程需要访问这些数据包进行处理（接收测试）或生成数据包（发送测试）。
+
+由于 iperf3 在另一个 NUMA 节点上运行，它访问网卡数据缓冲区（在远程内存中）会非常慢。
+
+同样，iperf3 发送的数据包也需要写入到其绑定的 NUMA 节点的内存，然后网卡驱动程序需要从（可能是）远程内存中读取这些数据包发送出去。
+
+这种跨 NUMA 节点的内存访问（Remote Access）带来的巨大延迟和带宽损失，会严重拖累网络吞吐量。
+
+
+2. 中断处理与进程分离:
+
+网卡接收到数据包后，会通过硬件中断通知 CPU。
+
+默认情况下，这些中断可能被分配到网卡所在 NUMA 节点的某个 CPU 核心（或一组核心）上处理。
+
+如果你将 iperf3 绑定到了与处理该网卡中断的 CPU 核心不同的核心上：
+
+中断处理程序（软中断，如 ksoftirqd 或 NAPI 轮询）在一个核心上运行，将数据包从网卡缓冲区取出，放入内核协议栈的接收队列（如 netif_rx 或 NAPI poll）。
+
+iperf3 在另一个核心上运行，它需要从内核的接收队列中读取数据（对于接收测试）。这涉及到核心间的数据移动和缓存同步（Cache Coherency Traffic）。
+
+这种分离增加了数据传输的路径长度和延迟，并消耗额外的总线带宽用于核心间通信（Inter-Core Communication），降低了效率。尤其是在高吞吐量场景下，这个开销变得非常显著。
+
+
+3. 单核处理能力瓶颈:
+
+iperf3 默认是单线程的。
+
+现代高速网卡（如 10G, 25G, 40G, 100G）需要非常强大的 CPU 处理能力来驱动。
+
+如果你将 iperf3 绑定到一个性能相对较弱或已经非常繁忙的核心上，这个核心可能无法以线速处理网络数据包。
+
+即使绑定的核心本身空闲且性能不错，单个核心的处理能力（包括协议栈处理、数据拷贝、用户态/内核态切换）可能仍然不足以饱和高速网络链路。此时，绑定到单个核心反而限制了它利用其他空闲核心的能力。未绑定时，操作系统调度器可能会在多个核心之间迁移进程或利用其他核心处理中断和后台任务，无意中实现了某种程度的并行。
+
+4. 调度器优化失效:
+
+操作系统调度器（如 Linux 的 CFS）非常智能，它会考虑 CPU 缓存热度（Cache Affinity）、负载均衡、NUMA 亲和性等因素。
+
+当进程不绑定时，调度器可以：
+
+将进程迁移到当前空闲的核心。
+
+将进程迁移到缓存中仍有其数据的热核心（Cache Hot）。
+
+在 NUMA 节点内进行负载均衡。
+
+强制绑定到一个核心后，即使该核心因为处理中断或其他任务变得繁忙，或者缓存变冷，iperf3 也无法被迁移到更合适的核心，失去了调度器动态优化的机会。
+
+
+5. 缓存效应（通常次要，但可能叠加）:
+
+理想情况下，绑定核心可以让进程的数据始终保留在该核心的缓存中（L1/L2/L3）。
+
+然而，如果这个核心同时需要处理很多中断（特别是网络中断）或其他内核任务，这些中断处理程序会频繁冲刷掉 iperf3 进程的缓存数据。当 iperf3 重新获得 CPU 时，它不得不从更慢的 L3 缓存或主存中重新加载数据，反而降低了效率。
+
+
+6. 超线程（SMT / Hyper-Threading）冲突:
+
+如果你绑定到了某个物理核心的一个逻辑线程（Hyper-Thread）上，而该物理核心的另一个逻辑线程正在处理高负载任务（如网络软中断、其他进程），那么两个逻辑线程会争抢物理核心的执行资源（如 ALU, FPU, Cache），导致性能下降。
+
+
+如何诊断和解决？
+
+1. 检查 NUMA 拓扑和网卡位置:
+
+使用 lscpu 或 numactl --hardware 查看 NUMA 节点布局。
+
+使用 ethtool -i <interface> 查看网卡驱动信息，然后查找 /sys/class/net/<interface>/device/numa_node 或使用 lspci -v 结合网卡 PCI 地址查看 NUMA node 字段，确定网卡属于哪个 NUMA 节点。
+
+关键：将 iperf3 绑定到与网卡相同的 NUMA 节点上的核心！ 使用 numactl --cpunodebind=<node_id> --membind=<node_id> iperf3 ... 通常是最佳实践，它确保进程和内存分配都在正确的节点上。如果必须用 taskset，也要确保掩码选择的 CPU 核心都在正确的 NUMA 节点上。
+
+
+2. 检查和处理网络中断亲和性 (IRQ Affinity):
+
+查看网卡中断号：grep <interface> /proc/interrupts (找类似 eth0-TxRx-0 的行)。
+
+查看当前中断亲和性：cat /proc/irq/<irq_num>/smp_affinity 或 cat /proc/irq/<irq_num>/smp_affinity_list。这个值通常是十六进制位掩码或 CPU 列表。
+
+目标： 将处理该网卡中断的核心（通常是软中断 ksoftirqd/<cpu>）设置在与 iperf3 进程相同的 NUMA 节点上，最好是同一个核心或相邻核心。这样可以减少跨核通信。使用 irqbalance 服务或手动写 /proc/irq/<irq_num>/smp_affinity 来设置。
+
+考虑启用 RSS (Receive Side Scaling) 并设置多队列：如果网卡和驱动支持 RSS，可以将接收流量哈希到多个中断队列，每个队列绑定到不同核心，然后将 iperf3 的多个实例（如果支持）或线程绑定到处理这些中断的核心上。
+
+
+3. 评估单核处理能力:
+
+在绑定运行 iperf3 时，使用 top 或 htop 观察被绑定核心的利用率 (%CPU)。如果它持续接近 100%，说明该核心是瓶颈。
+
+解决方案：
+
+尝试绑定到 NUMA 节点内更高频率或更空闲的核心。
+
+如果 iperf3 版本支持多线程 (-P 参数)，使用多个并行流 (iperf3 -P <num_threads>)，并将每个线程绑定到同一个 NUMA 节点内的不同核心上。这能有效利用多核能力驱动高速网卡。
+
+如果单线程是瓶颈且无法用多线程，可能需要接受绑定带来的 NUMA 优势与单核瓶颈之间的权衡，或者尝试优化内核网络栈参数（如增大 Socket Buffer）。
+
+
+4. 对比绑定与不绑定的情况:
+
+仔细测量并比较以下情况：
+
+完全不绑定 taskset。
+
+使用 numactl 正确绑定到网卡所在的 NUMA 节点。
+
+使用 taskset 绑定到错误 NUMA 节点。
+
+结合 perf, sar, mpstat 等工具监控 CPU 使用率（特别是软中断 %soft）、上下文切换、缓存命中率、跨 NUMA 内存访问量 (numastat) 等指标，帮助定位瓶颈。
+
+
+5. 考虑禁用或调整超线程:
+
+如果怀疑超线程冲突，可以尝试将 iperf3 和其对应的中断绑定到同一个物理核心的不同逻辑线程上，或者绑定到禁用超线程的物理核心上（通过调整内核启动参数或 BIOS 设置），测试性能差异。
+
+
+pkill iperf3
+sleep 1
+cpu=24
+for port in {5201..5216};do
+        next_cpu=$((cpu+2))
+        #echo "cpu_list is: $cpu,$next_cpu"
+        if ((port%2));then
+                #ip netns exec ns1 taskset -c $cpu,$next_cpu iperf3 -s -D -p $port &> log$port &
+                #ip netns exec ns1 iperf3 -s -D -p $port &> log$port &
+		# 绑定到和device一样的numanode
+                ip netns exec ns1 numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
+        else
+                #ip netns exec ns2 taskset -c $cpu iperf3 -s -D -p $port &> log$port &
+                #ip netns exec ns2 iperf3 -s -D -p $port &> log$port &
+                ip netns exec ns2 numactl --cpunodebind=0 --membind=0 iperf3 -s -D -p $port &> log$port &
+        fi
+        let cpu+=2
+done
+
+sleep 3
+
+for pid in $(pgrep iperf3);do 
+	chrt -f -p 99 $pid;
+done
+for pid in $(pgrep iperf3);do 
+	chrt -p $pid;
 done
 
 #### client
@@ -985,43 +1130,56 @@ ip addr add 199.111.1.1/24 dev bond0
 
 #### cilent iperf3
 # iperf -P 1保证每个进程使用100%的cpu，如果-P 4的话，会使用400%的cpu
-# 注意使用适当的-b参数值
-cpu=0
-opt="-l 128K"
-opt=""
-time=20
-cpu=0
-#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
-#for port in 5201 5202 5203 5204;do 
-#for port in 5201 5202;do
-for port in {5201..5215};do
+# 最佳实践是使用-P 1，结果更稳定和更大吗？具体原因不知。
+# 在udp性能测试中观察到，如果cpu过载，比如使用超过140%，那么性能就会下降
+# 所以我门可以通过调整-b和进程数量，来使cpu达到刚刚超过100%一点，这个时候性能最高。
+
+# 注意使用适当的-b参数值,对于udp测试，太大和太小都会影响性能，需要找到一个合适的值,使得
+# 两端的cpu使用率保持在100%左右,(忽略cpu过载的测试，只取cpu在100%左右的测试结果?)
+# mtu9000的时候，大于3G都没问题
+# mtu1500的时候，2G多比较合适,3G时性能急剧下降（源于我在固定机器的测试740-83）
+
+# iperf3进程数量，也会影响cpu使用，如果进程太多时cpu使用率不能稳定保持某个值，说明性能不够
+[root@dell-per740-83 ~]# cat throughput.sh 
+#!/bin/bash
+
+iperf_options=${1:-"-b 2350M -t 120 -l 1460"}
+log_flag=${2:-"${iperf_options}:"}
+echo "---- iperf3 options is \"$iperf_options\" ----"
+
+for port in {5201..5216};do
         if((port%2));then
-                #taskset -c $cpu iperf3 -c 199.111.1.3 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
-                iperf3 -c 199.111.1.3 -u -b 20G -t $time -P 1 -f k -p $port  &> log$port &
-                #iperf3 -c 199.111.1.3 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.3 -u -P 1 -f k -p $port $iperf_options &> log$port &
         else
-                #taskset -c $cpu iperf3 -c 199.111.1.4 -u -b 0 -t $time -P 1 -f k -p $port  &> log$port &
-                iperf3 -c 199.111.1.4 -u -b 20G -t $time -P 1 -f k -p $port  &> log$port &
-                #iperf3 -c 199.111.1.4 -t $time -P 1 -f k -p $port  &> log$port &
+                iperf3 -c 199.111.1.4 -u -P 1 -f k -p $port $iperf_options &> log$port &
         fi
-	let cpu+=2
 done
 
 wait
 
 total_bw=0
-#for port in 5201 5202 5203 5204 5205 5206 5207 5208;do
-#for port in 5201 5202 5203 5204;do 
-#for port in 5201 5202;do
-#for port in 5201 5202 5203 5204 5205 5206 5207 5208 5209 5210 5211 5212 5213 5214 5215 5216 5217 5218 5219 5220;do
-for port in {5201..5215};do
-        #bw=$(cat log$port | grep SUM.*receiver| awk '{print $6}')
+for port in {5201..5216};do
 	bw=$(cat log$port | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
-        echo stream$port: $bw
+	echo "$(uname -r) $log_flag stream$port: $bw"
         [ -n "$bw" ] && total_bw=$(echo $total_bw+$bw | bc -l)
 done
 
-echo total: $total_bw Kbits/sec
+echo "$(uname -r) $log_flag total: $total_bw Kbits/sec"
+
+
+[root@dell-per740-83 ~]# cat test.sh 
+#!/bin/bash
+#
+for i in {0..3};do 
+	./throughput.sh "-b 2000M -t 180 -l 1460"
+	./throughput.sh "-b 2100M -t 180 -l 1460"
+	./throughput.sh "-b 2200M -t 180 -l 1460"
+	./throughput.sh "-b 2250M -t 180 -l 1460"
+	./throughput.sh "-b 2300M -t 180 -l 1460"
+	./throughput.sh "-b 2350M -t 180 -l 1460"
+	./throughput.sh "-b 2400M -t 180 -l 1460"
+	./throughput.sh "-b 2500M -t 180 -l 1460"
+done
 
 #### client iperf3 - 2
 #!/bin/bash
