@@ -1167,6 +1167,7 @@ done
 echo "$(uname -r) $log_flag total: $total_bw Kbits/sec"
 
 
+# 找到大概的bit rate之后，在这个值附近进行测试，保留测试数据
 [root@dell-per740-83 ~]# cat test.sh 
 #!/bin/bash
 #
@@ -1180,6 +1181,33 @@ for i in {0..3};do
 	./throughput.sh "-b 2400M -t 180 -l 1460"
 	./throughput.sh "-b 2500M -t 180 -l 1460"
 done
+
+# 分析测试数据
+[root@dell-per740-83 ~]# cat calculate.sh 
+#!/bin/bash
+#
+
+for bit_rate in 2100M 2200M 2250M 2300M 2350M 2400M 2500M;do
+	echo "-- Analyze $bit_rate bitrate connections' throughput"
+	total=0
+	res_count=0
+	for file in kernel104.log1 kernel104.log2 kernel104.log3;do
+	#for file in kernel104.log1 kernel104.log2;do
+		total_in_file=0
+		res_count_in_file=0
+		res=$(grep "$bit_rate.*total" $file | grep -Eo "total: [0-9]+ Kbits/sec" | awk '{print $2}')
+		for rrr in $res;do
+			let res_count+=1
+			let total+=$rrr
+			let res_count_in_file+=1
+			let total_in_file+=$rrr
+		done
+		echo "$bit_rate conns avg throughput in $file is : $((total_in_file/res_count_in_file))"
+	done
+	echo -e "$bit_rate conns avg throughput is : $((total/res_count))\n"
+done
+
+echo "Throughput unit is Kbits/sec"
 
 #### client iperf3 - 2
 #!/bin/bash
