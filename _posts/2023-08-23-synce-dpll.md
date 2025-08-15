@@ -78,7 +78,7 @@ FFD is often expressed in parts per million (ppm) or parts per billion (ppb).
 
 ## Time Error
 ```
-就是两个时钟的时间差
+就是两个时钟的时间差,相位差
 ```
 
 ## max TE
@@ -115,7 +115,7 @@ Normally, dTE is further statistically analyzed using MTIE and TDEV; and the nex
 
 ## Maximum Time Interval Error
 ```
-TIE是取x(n+k)-x(n)
+TIE是取x(n+k)-x(n) , 这里的x(n)指的是在时钟周期n时候测量出的TE
 但是这两个指（x(n+k)， x(n)）不一定是最大和最小值。
 MTIE是找到这个interval之间的最大值和最小值，取差。
 
