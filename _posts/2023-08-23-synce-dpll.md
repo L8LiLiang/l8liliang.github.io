@@ -1312,3 +1312,94 @@ ts2phc 是一个时间同步工具，其核心是相位同步。
 
 所以，回答您的问题：ts2phc 主要是同步相位。
 ```
+
+## SDP
+```
+SDP是连接物理接口和DPLL中间的软件逻辑，可以控制物理接口
+
+What is an SDP (Software Defined Pin)?
+SDP (Software Defined Pin / 软件定义引脚) 是 Intel E810 系列网卡上一项高级的硬件功能，它允许用户通过软件命令，动态地改变网卡上物理引脚（通常是 SMA 或 U.FL 接口）的功能、方向（输入/输出）以及信号类型。
+The on-chip DPLL is the "brain" that performs the complex tasks of clock synchronization, filtering, and generation. The SDPs are the configurable "pipelines" that connect external real-world signals to and from this brain.
+
+Summary Diagram
+This diagram shows the relationship between the physical pins, the SDP configuration layer, and the DPLL engine.
+
+                                      +--------------------------------+
+                                      |         Intel E810 NIC         |
+                                      |                                |
+  External Signal <------> Physical Pin <------> SDP Configuration <------> +----------------+
+  (e.g., GNSS 1PPS In,    (SMA / U.FL)   (Direction/Type/etc.)          | On-Chip DPLL   |
+  10 MHz Out)                                                          | (The "Brain")  |
+                                                                       +-------+--------+
+                                                                               |
+                                                                               v
+                                                                      PTP & SyncE Clocks
+                                                                      (from Network Port)
+
+
+---- "Basically, the GPIOs for GNSS, SMA1, and U.FL1 are tied to connected SDPs..."
+This means the physical interfaces (the onboard GNSS and the external SMA1/U.FL1 connectors) are not hardwired to one function. Instead, they are routed into the flexible Software Defined Pin (SDP) system, which acts like a smart switch or multiplexer.
+
+---- "...if you configure SMA1 as an input pin (external timestamp), then the GNSS has to be disabled because it shares the same pin."
+This describes the resource conflict. When you tell the software, "I want to use the SMA1 connector as my input," the system knows it shares the physical or logical "pin" (the input channel) with the GNSS. To prevent a signal collision, it automatically disables the GNSS module's input.
+
+---- "But SMA2 doesn't share pins with GNSS, so it doesn't need to be automatically disabled."
+This clarifies that the SMA2 connector has its own independent path to the timing chip. Configuring it as an input creates no conflict with the GNSS, so both can be configured without interference (though the DPLL would still need to be told which one to actively listen to).
+
+Here is a simple diagram of the resource sharing:
+
+[GNSS Module] ---+
+                 |--> [Shared Internal Pin/Switch] ---> [DPLL Engine]
+[SMA1 / U.FL1] --+
+
+[SMA2] -----------> [Dedicated Internal Pin] -----> [DPLL Engine]
+
+
+# https://issues.redhat.com/browse/RHEL-29207?focusedId=26697813&page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#comment-26697813
+# https://issues.redhat.com/browse/RHEL-29207?focusedId=26531334&page=com.atlassian.jira.plugin.system.issuetabpanels%3Acomment-tabpanel#comment-26531334
+cat > : <<- EOF
+Basically, the GPIOs for GNSS, SMA1, and U.FL1 are tied to connected SDPs, if you configure SMA1 as an input pin (external timestamp), 
+then the GNSS has to be disabled because it shares the same pin. 
+But SMA2 doesn't share pins with GNSS, so GNSS doesn't need to be automatically disabled when enabling SMA2 input.
+
+echo "1 0 0 0 100" > .../period which is equivalent to the PTP_PEROUT_REQUEST ioctl with a channel of 1, a  start time of 0 (as soon as possible) and a period of 100 nanoseconds.
+Thi will fails with -EIO error code initially. 
+This is because channel 1 of the output function is not assigned yet.(need to assign channel 1 of output function to a pin first)
+
+You have to assign the pin to the correct function and channel
+echo "2 1" > /sys/class/ptp/ptpN/pins/<name>
+
+Here, the values are first the function type, 0 for disabled, 1 for external timestamp, 2 for periodic output, and 1 is the channel number of the function to assign. 
+This informs the kernel you would like the given function on the pin.
+
+That means, before enabling output on a channel, you must assign the output funciton of this channel(or channel of the output function?) to a pin first.
+EOF
+
+# https://issues.redhat.com/browse/RHEL-29207?focusedId=26225244&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-26225244
+#   GNSS pin is on a different channel and on a different SDP, so there's no need to disable this one automatically (GNSS is on SDP21, SMA2 is on SDP23).
+
+#   SDP20 is on channel1, SMA1 and U.FL1 are on channel1 , GNSS on channel1
+#   SDP22 is on channel2, SMA2 and U.FL2 are on channel2
+
+我理解是，
+GNSS，SMA1，U.FL1，SDP20都在一个SDP通道上(channel，应该就是上面逻辑图中所说的SDP configuration layer）
+SMA2, U.FL2, SDP22在另一个SDP通道上。
+在一个通道上，同时只能有一个输入或输出。
+
+但是这里面说的GNSS可能又不是GNSS物理输入接口。。。。因为GNSS和SDP20可以同时开启。。。
+难道指的是SDP21吗？比如：
+> 3. dpll still get locked when GNSS is disabled
+This is not disabling GNSS, this is in fact disabling SDP21 input to CVL core. 
+There is no way to actually disable GNSS from this API. 
+I don't understand why is it designed like this, so I'm not able to explain it
+
+```
+
+## GPIO
+```
+GPIO is the acronym for General-Purpose Input/Output. In Chinese, it's called 通用输入/输出 (tōng yòng shū rù / shū chū).
+
+It refers to a type of pin on an integrated circuit (like a microprocessor) or a circuit board (like a Raspberry Pi) whose function is not predefined and can be controlled by software at runtime.
+
+Think of it as a programmable, digital switch that can be used for a wide variety of tasks.
+```
