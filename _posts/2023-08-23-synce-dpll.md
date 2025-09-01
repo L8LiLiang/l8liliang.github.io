@@ -1403,3 +1403,23 @@ It refers to a type of pin on an integrated circuit (like a microprocessor) or a
 
 Think of it as a programmable, digital switch that can be used for a wide variety of tasks.
 ```
+
+##gnr-d 主要同步方法
+```
+https://docs.google.com/presentation/d/17jn4TmebZDlvrh293WJW1xwbuV7VnPyd/edit?slide=id.p1#slide=id.p1
+
+2. GNR-D always powers up fed by the local crystal (XTAL_IN/OUT)
+3. 使用ts2phc在NAC0和NAC1之间进行相位同步
+4. select_clock_ref ()  Running PHC Clocks from DPLL Input
+5. select_phy_ref () Running Ethernet PHY clocks from DPLL Input
+6. 虽然PHC driven by DPLL input了，但是相位没有同步，可以使用ts2phc进行相位同步，也就是 “Synchronizing PHC to DPLL”
+7. Synchronizing to a GNSS Module：PHY PHC driven by DPLL, DPLL driven by GNSS, PHC synced to DPLL with ts2phc
+8. 同上，只不过DPLL driven by SMA
+9. Using SyncE (Synchronous Ethernet) to Drive the DPLL: DPLL driven by SyncE, PHY and PHC still driven by DPLL, and PHC still synced to DPLL(ts2pc 1PPS)
+   The select_recovered_clk () API can be used to select up to two ports per NAC that can be used to recover a frequency reference via SyncE
+10. Using PTP (Precision Time Protocol) as the Clocking Reference: PHC同步到ptp4l之后，发送1PPS给DPLL，DPLL同步到这个1PPS，并且依然发送clock信号给PHC和PHY，PHC和PHY依然driven by DPLL
+   When PHC0 becomes a clock master（这块应该是slave吧？） in ptp4l, the system needs to shift to drive a 1PPS into the DPLL via ETH01_SDP_TIMESYNC0
+   If this is the highest priority input to the DPLL, this then drives all the outputs to be synchronous with the time that is derived from PTP
+
+
+```
