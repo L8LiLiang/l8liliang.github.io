@@ -40,6 +40,15 @@ which means an LPF passes only signals that are lower than a certain frequency�
 For the same reasons, sometimes LPFs are also called high-cut filters because they cut off signals higher than some fixed frequency. 
 Figure 5-5 illustrates LPF filtering where signals with lower frequency than a cut-off frequency are not attenuated (diminished). 
 The pass band is the range of frequencies that are not attenuated, and the stop band is the range of frequencies that are attenuated.
+
+When the PLL is tracking an input reference, it is the loop filter that is enforcing the limits of these frequency ranges. 
+The loop filter is usually a low-pass filter, and as the name suggests, it allows only low-frequency (slow) variations to pass through. 
+That means it removes high-frequency variation and noise in the reference signal. Conversely, a high-pass filter allows high-frequency variations to pass and removes the low-frequency changes.
+
+While these filters are discussed in the next section in detail, it is important to note that “low-frequency variations” does not refer to the frequency of the clock signal, 
+but the rate with which the frequency or phase of the clock signal varies. 
+Low rate (less frequent) changes are a gradual wander in the signal, whereas high rate changes are a very short-term jitter in the signal. 
+You will read more about jitter and wander later in this chapter.
 ```
 
 ## Jitter and Wander
@@ -99,11 +108,34 @@ whereas TIE is the relative time error between two clocks accumulated between tw
 
 TE是绝对error，TIE是intervel内积累的新error.
 
+
+一般测试的时候，应该是随着测试时间增加，interval也增加，就是说interval的开始时间是0，结束时间是当前的测试运行的时间：
+Some conclusions that you can draw based on plotted TIE on a graph are as follows:
+
+An ever-increasing trend in the TIE graph suggests that the measured clock has a frequency offset (compared to the reference clock). You can infer this because the frequency offset will be seen in each time error value and hence will get reflected in TIE calculations.
+
+If TIE graph shows a large value at the start of the measurement interval and starts converging slowly toward zero, it might suggest that the clock or PLL is not yet locked to the reference clock or is slow in locking or responding to the reference input.
+
+TIE适合测量jitter:
+Note that the measurement of the change in TE at each interval really becomes measurement of a short-term variation, or jitter, in the clock signals, or what is sometimes called timing jitter. 
+And as TIE is a measurement of the change in phase, it becomes a perfect measurement for capturing jitter.
+
+accuracy and stability:
+Now it is time to revisit the concepts of accuracy and stability from Chapter 1, “Introduction to Synchronization and Timing.” 
+These are two terms that have a very precise meaning in the context of timing.
+
+For synchronization, accuracy measures how close one clock is to the reference clock. 
+And this measurement is related to the maximum absolute TE (or max|TE|). So, a clock that closely follows the reference clock with a very small offset is an accurate clock.
+
+On the other hand, stability refers to the change and the speed of change in the clock during a given observation interval, 
+while saying nothing about how close it is to a reference clock.
+
 ```
 
 ## Constant Versus Dynamic Time Error
 ```
 Constant time error (cTE) is the mean of the TE values that have been measured. 
+The TE mean is calculated by averaging measurements over either some fixed time period (say 1000 seconds) or the whole measurement period.
 
 Dynamic time error (dTE) is the variation of TE over a certain time interval (you may remember, the variation of TE is also measured by TIE).
 Additionally, the variation of TE over a longer time period is known as wander, so the dTE is effectively a representation of wander.
@@ -111,6 +143,9 @@ Another way to think about it is that dTE is a measure of the stability of the c
 
 These two metrics are very commonly used to define timing performance, so they are important concepts to understand. 
 Normally, dTE is further statistically analyzed using MTIE and TDEV; and the next section details the derivations of those two metrics.
+
+cTE用来测量accurancy，dTE用来测量stability,MTIE和TDEV都属于dTE,and the dTE is effectively a representation of wander, 所以MTIE和TDEV都测量wander?
+
 ```
 
 ## Maximum Time Interval Error
@@ -123,15 +158,77 @@ Note also that as the MTIE is the maximum value of delay variation, it is record
 not only for one observation interval but for all observation intervals. 
 This means that if a higher value of MTIE is measured for subsequent observation intervals, it is recorded as a new maximum or else the MTIE value remains the same. 
 This in turn means that the MTIE values never decrease over longer and longer observation intervals.
+
+Therefore, MTIE can only stay the same or increase if another higher value is found during the measurement using a longer observation interval; 
+hence, the MTIE graph will never decline as it moves to the right (with increasing tau).
+
+The MTIE graph remaining flat means that the maximum peak-to-peak delay variation remains constant; 
+or in other words, no new maximum delay variation was recorded. On the other hand, if the graph increases over time, 
+it suggests that the test equipment is recording ever-higher maximum peak-to-peak delay variations. 
+Also, if the graph resembles a line increasing linearly, it shows that the measured clock is not locked to the reference clock at all, 
+and continually wandering off without correction. MTIE is often used to define a limit on the maximum phase deviation of a clock signal.
+
+To summarize, MTIE values record the peak-to-peak phase variations or fluctuations, 
+and these peak-to-peak phase variations can point to frequency shift in the clock signal. 
+Thus, MTIE is very useful in identifying a shift in frequency.
 ```
 
 ## Time Deviation
 ```
 Whereas MTIE shows the largest phase swings for various observation intervals, time deviation (TDEV) provides information about phase stability of a clock signal. 
 TDEV is a metric to measure and characterize the degree of phase variations present in the clock signal, primarily calculated from TIE measurements.
+TDEV测量相位变化幅度
 
 Unlike MTIE, which records the difference between the high and low peaks of phase variations, 
 TDEV primarily focuses on how frequent and how stable (or unstable) such phase variations are occurring over a given time—note the importance of “over a given time.” 
+
+
+# from gemini
+This text provides a great description of Time Deviation (TDEV), a key metric for understanding clock performance.
+
+In simple terms, while MTIE tells you the worst-case error in a clock's time, 
+TDEV tells you about the clock's frequency stability—that is, how "smoothly" or "consistently" it ticks over different time scales.
+
+An Analogy: A Long Car Trip
+Imagine you are on a long road trip with a GPS navigator showing the perfect, planned route.
+
+MTIE (Maximum Time Interval Error): This is like asking, "During any 10-minute segment of our trip, what was the farthest we ever strayed from the planned route?" 
+It only cares about the single worst-case deviation in position. You might have driven perfectly smoothly but took one wrong turn, and the MTIE would be very high.
+
+TDEV (Time Deviation): This is like asking, "On average, over 10-minute segments, how much did our speed fluctuate?" 
+TDEV doesn't care as much about your maximum distance from the route. 
+It cares about whether you were constantly speeding up and slowing down (high TDEV) or if you maintained a very steady speed (low TDEV). 
+A low TDEV indicates a smooth, stable journey.
+
+MTIE指出最大时间偏差，
+TDEV指出频率的稳定性。
+
+What the Description Means
+"TDEV provides information about phase stability" vs. "MTIE shows the largest phase swings"
+This is the core difference. 
+MTIE is a peak-to-peak measurement, capturing the worst-case boundary of the time error. 
+TDEV is a statistical root-mean-square (RMS) measurement that characterizes the stability of the clock's average frequency.
+
+"TDEV primarily focuses on how frequent and how stable...such phase variations are"
+This highlights TDEV's statistical nature. 
+It's not just about a single bad event; it's about the overall pattern of instability. 
+A clock that consistently has small errors will have a better TDEV than a clock with fewer but more erratic errors.
+
+"Think of tossing five coins..."
+This is a perfect analogy for what TDEV does.
+
+Getting five heads on the first toss (MTIE might be high) looks alarming, but it could be a random fluke.
+
+TDEV is like tossing the coins hundreds of times. 
+By analyzing the results, you can determine with high confidence if the coins are fair (the clock is stable and its variations are predictable random noise) or 
+if they are biased (the clock has a systematic problem, like a consistent frequency drift).
+
+Why TDEV is Useful
+TDEV is an essential tool for engineers because it helps them understand the type of noise affecting an oscillator. 
+Different types of noise (like white phase noise, flicker phase noise, random walk frequency noise) show up as distinct signatures on a TDEV plot.
+
+In summary, if you need to know the maximum time error to size a network buffer, you use MTIE. 
+If you need to understand the intrinsic stability and quality of the clock's oscillator, you use TDEV.
 ```
 
 ## Noise
@@ -143,6 +240,16 @@ Noise is classified as either jitter or wander. As seen in the preceding section
 and wander is the long-term variation of the measured clock compared to the reference clock. 
 The ITU-T G.810 standard defines jitter as phase variation with a rate of change greater than or equal to 10 Hz, 
 whereas it defines wander as phase variation with a rate of change less than 10 Hz. In other words, slower-moving, low-frequency jitter (less than 10 Hz) is called wander.
+
+
+The preceding sections explained that MTIE and TDEV are metrics that can be used to quantify the timing characteristics of clocks. 
+Therefore, it is no surprise that the timing characteristics of these clocks based on the noise performance (specifically noise generation) 
+have been specified by ITU-T in terms of MTIE and TDEV masks. These definitions are spread across numerous ITU-T specifications, 
+such as G.811, G.812, G.813, and G.8262. Chapter 8 covers these specifications in more detail.
+
+Because these metrics are so important, any timing test equipment used to measure the quality of clocks needs to be able to generate MTIE and TDEV graphs as output. 
+The results on these graphs are then compared to one of the masks from the relevant ITU-T recommendation. 
+However, it is imperative that the engineer uses the correct mask to compare the measured results against.
 
 # Noise Generation
 Noise generation is the amount of jitter and wander that is added to a perfect reference signal at the output of the clock.
@@ -1421,5 +1528,83 @@ https://docs.google.com/presentation/d/17jn4TmebZDlvrh293WJW1xwbuV7VnPyd/edit?sl
    When PHC0 becomes a clock master（这块应该是slave吧？） in ptp4l, the system needs to shift to drive a 1PPS into the DPLL via ETH01_SDP_TIMESYNC0
    If this is the highest priority input to the DPLL, this then drives all the outputs to be synchronous with the time that is derived from PTP
 
+
+```
+
+## gnr-d output pin phase-adjust
+```
+problem 4: the output pins' phase-adjust can't be changed (input pin works well on this)
+Output pin phase adjust value has to be multiple of connected synthesizer half clock cycles.
+
+In simple terms, the hardware that generates the output signal can only shift its phase in specific, discrete increments, like moving a Lego brick from one stud to the next. You can't place it halfway between two studs. For your hardware, that minimum increment is a "half clock cycle" of its internal synthesizer.
+
+
+The output pin's phase adjustment is the same. 
+It has a minimum "step size." You can adjust the phase by 1 step, 2 steps, or 3 steps, but not by 1.5 steps. For your hardware, that "step" is the duration of a half clock cycle of the synthesizer.
+
+Practical Example
+Let's say the synthesizer inside your DPLL runs at 100 MHz.
+
+Clock Period: The period of a 100 MHz clock is 1 / 100,000,000 seconds = 10 nanoseconds.
+
+Half Clock Cycle: Half of this period is 5 nanoseconds.
+
+The Rule: This means your phase-adjust value for an output pin must be a multiple of 5 nanoseconds.
+
+You can set phase-adjust to 0, 5, 10, 15, etc.
+
+You cannot set phase-adjust to 3, 8, or 12. If you try, the hardware will likely reject the value or round it to the nearest valid multiple.
+
+
+It depends on synthesizer's frequency connected to the particular output.
+
+for GNR-D rework (05 and 06) there are 2 frequencies used for synths... 200MHz and 312.5MHz
+then:
+half_synth_cycle = 10^12 / (2 * synth_freq)
+then
+phase_adjust % half_synth_cycle == 0
+
+for 312.5MHz: half_synth_cycle = 1600
+for 200MHz: half_synth_cycle = 2500
+so for outputs connected to synth with 312.5 the phase_adjust value has to be multiple of 1600
+and for 200MHz has to be multiple of 2500
+
+1600 * 25 = 40000
+2500 * 16 = 40000
+
+40000 value is 40000 ps -> 40 ns
+
+```
+
+## clock bandwidth
+```
+The main metric used to describe how noise is passed from input to output is clock bandwidth, which was explained in the section “Low-Pass and High-Pass Filters.
+For example, the noise transfer of an Option 1 EEC is described in clause 10.1 of ITU-T G.8262 as follows: 
+“The minimum bandwidth requirement for an EEC is 1 Hz. The maximum bandwidth requirement for an EEC is 10 Hz.”
+
+
+Narrow Bandwidth (e.g., 1 Hz) is like a soft, floaty suspension on a luxury car. 
+It's very slow to react and absorbs almost all the small, fast bumps (high-frequency jitter), giving you a very smooth ride.
+
+Wide Bandwidth (e.g., 10 Hz) is like a stiff, sporty suspension on a race car. 
+It's very quick to react and follows the road surface closely. You feel more of the small bumps (lets more jitter through), 
+but it responds instantly to actual turns (tracks the input signal's wander).
+
+```
+
+
+## Stratum Clock System
+```
+This is a hierarchy used in telecommunications to rank timing sources by their accuracy. The lower the stratum number, the higher the accuracy.
+
+Stratum 1: The highest level. A completely autonomous source like a Cesium atomic clock or a GNSS (GPS) receiver. It does not need to be synchronized to anything else.
+
+Stratum 2: These clocks, like one based on a Rubidium oscillator, are very stable and are synchronized to a Stratum 1 source. They have excellent holdover capabilities.
+
+Stratum 3: These clocks are synchronized to a Stratum 2 source. A high-quality OCXO (Oven-Controlled Crystal Oscillator) is a typical Stratum 3 clock.
+
+Stratum 3E: An "enhanced" version of Stratum 3 with much better stability and holdover.
+
+Stratum 4: A much lower-quality clock, often a simple, uncompensated crystal oscillator (XO). This is the type of clock found in most standard network equipment like routers and switches. Its holdover performance is very poor.
 
 ```
