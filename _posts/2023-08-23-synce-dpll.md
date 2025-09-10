@@ -49,6 +49,113 @@ While these filters are discussed in the next section in detail, it is important
 but the rate with which the frequency or phase of the clock signal varies. 
 Low rate (less frequent) changes are a gradual wander in the signal, whereas high rate changes are a very short-term jitter in the signal. 
 You will read more about jitter and wander later in this chapter.
+
+from gemini
+# Low-Pass Filter过滤的是频率还是频率的变化？
+This is an excellent and insightful question that gets to the heart of how these systems work.
+The direct, technical answer is that a low-pass filter filters frequency itself.
+However, in the context of a DPLL/PLL, this is effectively the same as filtering the "frequency of change," because of what signal the filter is actually processing.
+Let's break this down.
+
+1. The Fundamental Role of a Filter
+At its core, any filter, including a low-pass filter, operates on the frequency components present in the signal that is fed into it.
+
+Imagine a signal that is a mix of two sounds:
+A low-pitched, slow hum (a 10 Hz sine wave)
+A high-pitched, fast buzz (a 1000 Hz sine wave)
+
+If you pass this mixed signal through a low-pass filter with a cutoff of 100 Hz, the filter will:
+Allow the 10 Hz signal to pass through.
+Block the 1000 Hz signal.
+
+The filter doesn't know or care if these frequencies are changing; it simply acts on the frequency components that exist at its input at any given moment.
+
+2. The Special Case of a DPLL/PLL
+Now, let's apply this to the DPLL context we've been discussing. This is where your question becomes very clever.
+
+In a DPLL, the signal fed into the loop filter is not the original reference clock. 
+Instead, it is the phase error signal coming from the phase detector. 
+This error signal represents the difference between the reference clock and the local clock.
+
+Let's see what this error signal looks like:
+If the reference clock has high-frequency jitter: 
+    The phase difference between it and the smooth local clock will fluctuate rapidly. The phase error signal will therefore contain high-frequency components.
+
+If the reference clock has low-frequency wander: 
+    The phase difference will change slowly over time. The phase error signal will contain low-frequency components.
+
+This is the key: The "frequency" of the phase error signal is directly related to the "frequency of change" in the original reference clock.
+
+When the low-pass loop filter acts on this error signal:
+It blocks the high-frequency components of the error signal, which prevents the DPLL from reacting to the input jitter.
+It passes the low-frequency components of the error signal, which allows the DPLL to track the slow input wander.
+
+Conclusion
+So, to give a complete answer:
+Technically: A low-pass filter always filters frequency.
+Intuitively in a DPLL: You can think of it as filtering the frequency of change, 
+because the signal it's processing (the phase error) is a direct representation of the changes in the reference clock's phase.
+
+Your question correctly identifies that in a control loop like a DPLL, 
+filtering the error signal's frequency achieves the goal of controlling the response to the reference signal's rate of change.
+
+
+# from gemini
+The low-pass filter is the "brain" of the PLL that decides which parts of the input signal to trust and which to ignore.
+
+An Analogy: A Car's Suspension 
+To build on your excellent explanation, think of the PLL's loop filter as a car's suspension system. The road is the incoming reference signal.
+
+Slow Variations (Hills and Valleys): These are the low-frequency changes in the road. You want your car to follow these, going up the hills and down into the valleys. A car's suspension is designed to allow this.
+
+Fast Variations (Bumps and Potholes): These are the high-frequency noise and jitter on the road surface. You do not want to feel every single one of these.
+
+The car's suspension acts as a low-pass filter:
+It passes the slow, low-frequency hills and valleys to the car's body.
+It blocks or absorbs the fast, high-frequency bumps and potholes.
+
+This is exactly what the PLL's loop filter does. 
+It tracks the slow, long-term drift (wander) of the input reference but filters out and rejects the fast, short-term noise (jitter). 
+This is the key to how a PLL can "clean up" a noisy clock signal.
+
+Your description correctly contrasts this with a high-pass filter, which would do the opposite—it would ignore the hills but transmit every single bump, which is not what you want for a stable clock.
+```
+
+## clock bandwidth
+```
+The main metric used to describe how noise is passed from input to output is clock bandwidth, which was explained in the section “Low-Pass and High-Pass Filters.
+For example, the noise transfer of an Option 1 EEC is described in clause 10.1 of ITU-T G.8262 as follows: 
+“The minimum bandwidth requirement for an EEC is 1 Hz. The maximum bandwidth requirement for an EEC is 10 Hz.”
+
+
+Narrow Bandwidth (e.g., 1 Hz) is like a soft, floaty suspension on a luxury car. 
+It's very slow to react and absorbs almost all the small, fast bumps (high-frequency jitter), giving you a very smooth ride.
+
+Wide Bandwidth (e.g., 10 Hz) is like a stiff, sporty suspension on a race car. 
+It's very quick to react and follows the road surface closely. You feel more of the small bumps (lets more jitter through), 
+but it responds instantly to actual turns (tracks the input signal's wander).
+
+
+滤波器带宽 (Filter Bandwidth):
+例子: "一个 10 Hz 的低通滤波器 (low-pass filter)。"
+含义: 这个滤波器允许低于 10 Hz 的信号通过，并开始衰减高于 10 Hz 的信号。10 Hz 就是它的截止频率，用一个单一数值表示。
+
+If you have a "100 Hz high-pass filter":
+It means its cutoff frequency is 100 Hz.
+It will block or significantly weaken all signals with frequencies below 100 Hz (like a 60 Hz electrical hum).
+It will allow all signals with frequencies above 100 Hz (like most of the human voice or music) to pass through.
+
+# 我的理解
+The loop filter is usually a low-pass filter,
+
+Narrow Bandwidth指的是LPF，LPF的bandwidth开始值都是0。
+The minimum bandwidth requirement for an EEC is 1 Hz。 
+这句话的意思是，LPF的cut-off frequency最小是1Hz，不能再小（Narrow）了
+
+Wide Bandwidth指的是LPF，
+The maximum bandwidth requirement for an EEC is 10 Hz
+这句话的意思是，LPF的cut-off frequency最大是10HZ,不能再大(Wide)了
+
 ```
 
 ## Jitter and Wander
@@ -1573,22 +1680,6 @@ and for 200MHz has to be multiple of 2500
 2500 * 16 = 40000
 
 40000 value is 40000 ps -> 40 ns
-
-```
-
-## clock bandwidth
-```
-The main metric used to describe how noise is passed from input to output is clock bandwidth, which was explained in the section “Low-Pass and High-Pass Filters.
-For example, the noise transfer of an Option 1 EEC is described in clause 10.1 of ITU-T G.8262 as follows: 
-“The minimum bandwidth requirement for an EEC is 1 Hz. The maximum bandwidth requirement for an EEC is 10 Hz.”
-
-
-Narrow Bandwidth (e.g., 1 Hz) is like a soft, floaty suspension on a luxury car. 
-It's very slow to react and absorbs almost all the small, fast bumps (high-frequency jitter), giving you a very smooth ride.
-
-Wide Bandwidth (e.g., 10 Hz) is like a stiff, sporty suspension on a race car. 
-It's very quick to react and follows the road surface closely. You feel more of the small bumps (lets more jitter through), 
-but it responds instantly to actual turns (tracks the input signal's wander).
 
 ```
 
