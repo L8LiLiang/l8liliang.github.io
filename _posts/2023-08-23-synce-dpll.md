@@ -284,58 +284,19 @@ Thus, MTIE is very useful in identifying a shift in frequency.
 ```
 Whereas MTIE shows the largest phase swings for various observation intervals, time deviation (TDEV) provides information about phase stability of a clock signal. 
 TDEV is a metric to measure and characterize the degree of phase variations present in the clock signal, primarily calculated from TIE measurements.
-TDEV测量相位变化幅度
 
 Unlike MTIE, which records the difference between the high and low peaks of phase variations, 
 TDEV primarily focuses on how frequent and how stable (or unstable) such phase variations are occurring over a given time—note the importance of “over a given time.” 
 
+TDEV measure as a root mean square (RMS) type of metric to capture clock noise.
+Mathematically, RMS is calculated by first taking a mean (average) of square values of the sample data and then taking a square root of it. 
+The key aspect of this calculation is that it averages out extremes or outliers in the sample (much more than the normal mean). 
+Interestingly, the extremes average out more and more as the sample data increases.
 
-# from gemini
-This text provides a great description of Time Deviation (TDEV), a key metric for understanding clock performance.
+MTIE指出最大相位偏差，
+TDEV通过RMS函数计算相位的平均偏差，如果相位偏差发生的更频繁或者幅度更大，那么TDEV值越高。
+同时TDEV还可以过滤掉一些偶然因素导致的异常相位偏差。
 
-In simple terms, while MTIE tells you the worst-case error in a clock's time, 
-TDEV tells you about the clock's frequency stability—that is, how "smoothly" or "consistently" it ticks over different time scales.
-
-An Analogy: A Long Car Trip
-Imagine you are on a long road trip with a GPS navigator showing the perfect, planned route.
-
-MTIE (Maximum Time Interval Error): This is like asking, "During any 10-minute segment of our trip, what was the farthest we ever strayed from the planned route?" 
-It only cares about the single worst-case deviation in position. You might have driven perfectly smoothly but took one wrong turn, and the MTIE would be very high.
-
-TDEV (Time Deviation): This is like asking, "On average, over 10-minute segments, how much did our speed fluctuate?" 
-TDEV doesn't care as much about your maximum distance from the route. 
-It cares about whether you were constantly speeding up and slowing down (high TDEV) or if you maintained a very steady speed (low TDEV). 
-A low TDEV indicates a smooth, stable journey.
-
-MTIE指出最大时间偏差，
-TDEV指出频率的稳定性。
-
-What the Description Means
-"TDEV provides information about phase stability" vs. "MTIE shows the largest phase swings"
-This is the core difference. 
-MTIE is a peak-to-peak measurement, capturing the worst-case boundary of the time error. 
-TDEV is a statistical root-mean-square (RMS) measurement that characterizes the stability of the clock's average frequency.
-
-"TDEV primarily focuses on how frequent and how stable...such phase variations are"
-This highlights TDEV's statistical nature. 
-It's not just about a single bad event; it's about the overall pattern of instability. 
-A clock that consistently has small errors will have a better TDEV than a clock with fewer but more erratic errors.
-
-"Think of tossing five coins..."
-This is a perfect analogy for what TDEV does.
-
-Getting five heads on the first toss (MTIE might be high) looks alarming, but it could be a random fluke.
-
-TDEV is like tossing the coins hundreds of times. 
-By analyzing the results, you can determine with high confidence if the coins are fair (the clock is stable and its variations are predictable random noise) or 
-if they are biased (the clock has a systematic problem, like a consistent frequency drift).
-
-Why TDEV is Useful
-TDEV is an essential tool for engineers because it helps them understand the type of noise affecting an oscillator. 
-Different types of noise (like white phase noise, flicker phase noise, random walk frequency noise) show up as distinct signatures on a TDEV plot.
-
-In summary, if you need to know the maximum time error to size a network buffer, you use MTIE. 
-If you need to understand the intrinsic stability and quality of the clock's oscillator, you use TDEV.
 ```
 
 ## Noise
@@ -1697,5 +1658,82 @@ Stratum 3: These clocks are synchronized to a Stratum 2 source. A high-quality O
 Stratum 3E: An "enhanced" version of Stratum 3 with much better stability and holdover.
 
 Stratum 4: A much lower-quality clock, often a simple, uncompensated crystal oscillator (XO). This is the type of clock found in most standard network equipment like routers and switches. Its holdover performance is very poor.
+
+```
+
+## G.8272
+```
+
+6 Time error, wander and jitter in locked mode
+The noise generation of a PRTC is characterized by two main aspects:
+– the constant time error (time offset) at its output compared to the applicable primary time
+standard (e.g., UTC);
+– the amount of phase error (wander and jitter) produced at its output.
+
+For characterization of the second aspect described above (phase error) the calculation of the
+maximum time interval error (MTIE) and the time deviation (TDEV) is useful. There are two types
+of PRTCs: PRTC-A and PRTC-B.
+
+Clause 6.1 defines the time error requirements applicable at the output of the PRTC, which
+corresponds to the combination of the two aspects described above (constant time error and phase
+error). No requirement is defined for the constant time error component taken alone; it is combined
+with the phase error and not separately measurable.
+time error requirements 指的是，constant time error和phase error (wander and jitter)加起来，允许的误差值
+
+Clauses 6.2 and 6.3 define the wander and jitter requirements applicable at the output of the PRTC,
+which correspond to the second aspect described above (phase error).
+这个是单独针对phase error (wander and jitter)的标准
+
+从这个标准中，可以看出
+测量wander可以把本地信号与一个自己没同步到的信号做对比
+但是测量time error，需要把本地信号与自己同步到的信号做对比. 这里的timer error表述不是很清晰，可能就是MTIE/TDEV?我的理解MTIE/TDEV是wander
+
+```
+
+## 2Way Dynamic MTIE LF 和 1PPS TE relative dynamic MTIE LF分别代表什么？
+```
+From gemini
+
+Of course. These are two advanced timing metrics used to characterize the performance of a PTP clock (like a Telecom Boundary Clock, T-BC) during dynamic events, 
+such as a reference clock switchover.
+
+The key difference between them is the measurement point and what is being measured:
+2Way Dynamic MTIE LF measures the clock's performance over a real PTP network link, including all network-induced errors.
+1PPS TE relative dynamic MTIE LF measures the clock's intrinsic internal performance in a controlled lab environment, isolated from the network.
+
+An Analogy: A Water Purification System 
+Imagine your PTP clock is a high-tech water purification system.
+
+2Way Dynamic MTIE LF is like testing the water quality from a faucet at the far end of a long, old pipe connected to the filter. The quality you measure is affected by both the filter's performance and any rust or dirt the water picks up from the pipe itself. This is a real-world, end-to-end performance test.
+
+1PPS TE relative dynamic MTIE LF is like using a pristine, sterile syringe to take a water sample directly from a test tap on the purification unit itself. This test isolates the filter and tells you exactly how well the filter itself is working, without any influence from the downstream pipes.
+
+1. 2Way Dynamic MTIE LF (Two-Way Dynamic MTIE, Low-pass Filtered)
+What It Measures: The quality of the time synchronization as seen by a slave clock at the end of a packet-based network path. It's a measure of real-world PTP performance.
+
+How It's Measured: It is calculated from the Time Error data generated by the standard PTP two-way message exchange (Sync, Follow_Up, Delay_Req, Delay_Resp messages).
+
+What It Includes: This measurement is affected by all sources of error:
+The master clock's own noise.
+
+The noise and wander added by the device under test (e.g., a Boundary Clock).
+
+Crucially, all network impairments, especially Packet Delay Variation (PDV), also known as network jitter.
+
+LF (Low-pass Filtered): The raw Time Error data is first passed through a low-pass filter (e.g., with a 0.1 Hz cutoff) before the MTIE is calculated. This is a standard procedure to remove high-frequency noise and focus on the wander performance relevant to telecom standards.
+
+Purpose: To verify that a clock can deliver time that meets standards (e.g., ITU-T G.8273.2) under realistic network conditions.
+
+2. 1PPS TE relative dynamic MTIE LF (1PPS Time Error relative dynamic MTIE, Low-pass Filtered)
+What It Measures: The amount of phase error (wander) that the device's internal DPLL adds to a signal as it passes through. This is a measure of the device's noise transfer or intrinsic performance.
+
+How It's Measured: This is a direct, physical measurement in a lab. You inject a clean, near-perfect 1PPS signal into the device's 1PPS IN port. You then use a high-precision phase analyzer to compare that input signal directly to the 1PPS OUT signal generated by the device. The difference between them is the "relative Time Error."
+
+What It Includes: This measurement is primarily affected by:
+The internal noise of the device's oscillator (XO/OCXO).
+The behavior of the device's DPLL (its filtering characteristics).
+It excludes almost all network-related impairments.
+
+Purpose: To characterize the intrinsic quality and stability of the device's clock recovery circuit (DPLL), separate from any network effects.
 
 ```
