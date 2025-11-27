@@ -12,8 +12,9 @@ key: Linux
 ## NIC Offloads
 
 ```
-NIC tso and bond tso can take effect respectively
-But if bond tso is off, NIC tso can't take effect.
+tso:
+只有bond和NIC都开启的情况下，性能才高。
+任何一个不开，性能都一样低。
 Bond doesnt propagate conf to slaves.
 
 Didn't see GSO take effect on NIC and bond. GSO is a software implementation of tso.
@@ -23,9 +24,15 @@ NIC gro can take effect. But no difference when bond GRO is on versus off.
 GRO is unimplemented for bonding
 Bond doesnt propagate conf to slaves.
 
-NIC lro can take effect. But no difference when bond GRO is on versus off.
+NIC lro can take effect. But no difference when bond LRO is on versus off.
 LRO is unimplemented for bonding
 Bond propagate lro off to slaves, but doesn't propagate lro on.
+
+TX offload:
+只有bond和NIC都开启的情况下，性能才高。
+任何一个不开，性能都一样低。
+
+RX: bond doesn't support
 
 8.10. NIC Offloads
 The default Ethernet maximum transfer unit (MTU) is 1500 bytes, which is the largest frame size that can usually be transmitted. 

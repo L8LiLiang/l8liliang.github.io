@@ -1247,10 +1247,10 @@ echo avg result is : $((total_result/3)) Kbits/sec
 port-channel load-balance src-dst ip-l4port
 ```
 #### server
-[root@dell-per750-16 ~]# cat setup.sh 
+[root@dell-per740-83 ~]# cat setup.sh 
 #!/bin/bash
 
-numa_or_taskset=$1
+numa_or_taskset=numa
 
 set_irq_affinity()
 {
@@ -1273,7 +1273,7 @@ set_irq_affinity()
 systemctl start irqbalance
 if [ $numa_or_taskset == "taskset" ];then
         echo "using tasket"
-        set_irq_affinity ens2f0np0 ens2f1np1
+        set_irq_affinity ens1f0np0 ens1f1np1
 else
         echo "using numa"
         systemctl start irqbalance
@@ -1281,13 +1281,16 @@ fi
 
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
-ifenslave bond0 ens2f0np0 ens2f1np1
+ifenslave bond0 ens1f0np0 ens1f1np1
 ip addr add 192.168.10.3/24 dev bond0
 ip addr add 192.168.10.4/24 dev bond0
+ethtool -A ens1f0np0 tx off rx off
+ethtool -A ens1f1np1 tx off rx off
+ethtool -A bond0 tx off rx off
 
 pkill iperf3
 sleep 1
-# bind iperf3 processes to cpu 6 or 8 or 10 or 12
+# bind iperf3 processes to cpus
 cpu=6
 for port in {12000..12063};do
         echo "cpu is: $cpu"
@@ -1305,50 +1308,37 @@ for port in {12000..12063};do
 		fi
 	fi
         let cpu+=2
-	# only use 6,8,10,12
-	[ $cpu -gt 63 ] && cpu=6
+	[ $cpu -gt 47 ] && cpu=6
 done
 
-#sleep 3
-#
-#for pid in $(pgrep iperf3);do 
-#	chrt -f -p 99 $pid;
-#done
-#for pid in $(pgrep iperf3);do 
-#	chrt -p $pid;
-#done
-
-[root@dell-per750-16 ~]# cat restart_iperf3.sh 
-#!/bin/bash
-
-numa_or_taskset=$1
-
+[root@dell-per740-83 ~]# cat restart_ipf 
+numa_or_taskset=numa
 pkill iperf3
 sleep 1
-# bind iperf3 processes to cpu 6 or 8 or 10 or 12
+# bind iperf3 processes to cpus
 cpu=6
 for port in {12000..12063};do
         echo "cpu is: $cpu"
-	if ((port%2));then
-		if [ $numa_or_taskset == "taskset" ];then
-			taskset -c $cpu iperf3 -s -D -B 192.168.10.3 -p $port &> log$port &
-		else
-			numactl --cpunodebind=0 --membind=0 iperf3 -s -D -B 192.168.10.3 -p $port &> log$port &
-		fi
-	else
-		if [ $numa_or_taskset == "taskset" ];then
-			taskset -c $cpu iperf3 -s -D -B 192.168.10.4 -p $port &> log$port &
-		else
-			numactl --cpunodebind=0 --membind=0 iperf3 -s -D -B 192.168.10.4 -p $port &> log$port &
-		fi
-	fi
+        if ((port%2));then
+                if [ $numa_or_taskset == "taskset" ];then
+                        taskset -c $cpu iperf3 -s -D -B 192.168.10.3 -p $port &> log$port &
+                else
+                        numactl --cpunodebind=0 --membind=0 iperf3 -s -D -B 192.168.10.3 -p $port &> log$port &
+                fi
+        else
+                if [ $numa_or_taskset == "taskset" ];then
+                        taskset -c $cpu iperf3 -s -D -B 192.168.10.4 -p $port &> log$port &
+                else
+                        numactl --cpunodebind=0 --membind=0 iperf3 -s -D -B 192.168.10.4 -p $port &> log$port &
+                fi
+        fi
         let cpu+=2
-	# only use 6,8,10,12
-	[ $cpu -gt 63 ] && cpu=6
+        [ $cpu -gt 47 ] && cpu=6
 done
 
 
 ### client
+[root@dell-per740-91 ~]# cat setup.sh 
 #!/bin/bash
 
 numa_or_taskset=$1
@@ -1373,7 +1363,7 @@ set_irq_affinity()
 
 if [ $numa_or_taskset == "taskset" ];then
 	echo "using tasket"
-	set_irq_affinity ens2f0np0 ens2f1np1
+	set_irq_affinity ens3f0np0 ens3f1np1
 else
 	echo "using numa"
 	systemctl start irqbalance
@@ -1381,16 +1371,19 @@ fi
 
 modprobe -v bonding mode=4 miimon=100 max_bonds=1 xmit_hash_policy=layer2+3
 ip link set bond0 up
-ifenslave bond0 ens2f0np0 ens2f1np1
+ifenslave bond0 ens3f0np0 ens3f1np1
 ip addr add 192.168.10.1/24 dev bond0
 ip addr add 192.168.10.2/24 dev bond0
+ethtool -A ens3f0np0 tx off rx off
+ethtool -A ens3f1np1 tx off rx off
+ethtool -A bond0 tx off rx off
 #ip link set bond0 mtu 9000
 
-### throughput.sh
-[root@dell-per750-15 ~]# cat throughput.sh 
+
+[root@dell-per740-91 ~]# cat throughput.sh 
 #!/bin/bash
 
-opts=$(getopt -o m:b:t:l:f: -l numa_or_taskset:,bitrate:,time:,length:,log_flag: -- "$@")
+opts=$(getopt -o m:b:t:l:f:s: -l numa_or_taskset:,bitrate:,time:,length:,log_flag:,stream: -- "$@")
 eval set -- $opts
 
 while :;
@@ -1401,6 +1394,7 @@ do
                 "-t" | "--time") shift; time=$1;;
                 "-l" | "--length") shift; length=$1;;
                 "-f" | "--log_flag") shift; log_flag=$1;;
+                "-s" | "--stream") shift; stream=$1;;
                 "--") shift; break;;
         esac
         shift
@@ -1411,7 +1405,7 @@ bitrate=${bitrate:-"0/1000"}
 time=${time:-"60"}
 length=${length:-"1400"}
 
-iperf_options="-b $bitrate -t $time -l $length"
+iperf_options="-b $bitrate -t $time -l $length -R $stream"
 echo "---- iperf3 options is \"$iperf_options\" ----"
 log_flag=${log_flag:-"$iperf_options"}
 log_flag="$iperf_options"
@@ -1424,72 +1418,85 @@ fi
 
 # bind iperf3 processes to cpu 6 or 8 or 10 or 12
 cpu=6
-for port in {12000..12063};do
+for port in {12000..12047};do
 	if ((port%2));then
 		if [[ "$numa_or_taskset" == "taskset" ]];then
-			taskset -c $cpu iperf3 -c 192.168.10.3 -f k --udp -p $port --cport $port $iperf_options &> log$port &
+			taskset -c $cpu iperf3 -c 192.168.10.3 -f k -p $port --cport $port $iperf_options &> log$port &
 		else
-			numactl --cpunodebind=0 --membind=0 iperf3 -c 192.168.10.3 -f k --udp -p $port --cport $port $iperf_options &> log$port &
+			numactl --cpunodebind=0 --membind=0 iperf3 -c 192.168.10.3 -f k -p $port --cport $port $iperf_options &> log$port &
 		fi
 	else
 		if [[ "$numa_or_taskset" == "taskset" ]];then
-			taskset -c $cpu iperf3 -c 192.168.10.4 -f k --udp -p $port --cport $port $iperf_options &> log$port &
+			taskset -c $cpu iperf3 -c 192.168.10.4 -f k -p $port --cport $port $iperf_options &> log$port &
 		else
-			numactl --cpunodebind=0 --membind=0 iperf3 -c 192.168.10.4 -f k --udp -p $port --cport $port $iperf_options &> log$port &
+			numactl --cpunodebind=0 --membind=0 iperf3 -c 192.168.10.4 -f k -p $port --cport $port $iperf_options &> log$port &
 		fi
 	fi
         let cpu+=2
-        # only use 6,8,10,12
-        [ $cpu -gt 63 ] && cpu=6
+        [ $cpu -gt 47 ] && cpu=6
 done
 
 wait
 
-total_bw=0
-for port in {12000..12063};do
-	bw=$(cat log$port | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
-	echo "$(uname -r) $log_flag stream$port: $bw"
-        [ -n "$bw" ] && total_bw=$(echo $total_bw+$bw | bc -l)
+total_rcv_bw=0
+total_snd_bw=0
+for port in {12000..12047};do
+	rcv_bw=$(cat log$port | grep receiver | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+	snd_bw=$(cat log$port | grep sender | tail -n1 | grep -Eo "[0-9]+ Kbits/sec" | awk '{print $1}')
+	echo "$(uname -r) $log_flag stream$port receive: $rcv_bw"
+	echo "$(uname -r) $log_flag stream$port send: $snd_bw"
+        [ -n "$rcv_bw" ] && total_rcv_bw=$(echo $total_rcv_bw+$rcv_bw | bc -l)
+        [ -n "$snd_bw" ] && total_snd_bw=$(echo $total_snd_bw+$snd_bw | bc -l)
 done
 
-echo "$(uname -r) $log_flag total: $total_bw Kbits/sec"
+echo "$(uname -r) $log_flag total receive: $total_rcv_bw Kbits/sec"
+echo "$(uname -r) $log_flag total send: $total_snd_bw Kbits/sec"
 
 
-
-### test.sh
-[root@dell-per750-15 ~]# cat test.sh 
+[root@dell-per740-91 ~]# cat test.sh 
 #!/bin/bash
 
-numa_or_taskset=${1:-"numa"}
-time=60
-length=1400
+stream=${1:-"udp"}
+numa_or_taskset=${2:-"numa"}
+time=30
 
-for i in {0..2};do 
-	./throughput.sh -m $numa_or_taskset -b 200M -t $time -l $length
-	./throughput.sh -m $numa_or_taskset -b 2000M -t $time -l $length
-	./throughput.sh -m $numa_or_taskset -b 10000M -t $time -l $length
-	./throughput.sh -m $numa_or_taskset -b 20000M -t $time -l $length
-	./throughput.sh -m $numa_or_taskset -b 0 -t $time -l $length
-	./throughput.sh -m $numa_or_taskset -b 0/1000 -t $time -l $length
-done
+if [[ "$stream" == "udp"  ]];then
+	length=1400
+	for i in {0..2};do 
+		#./throughput.sh -s --udp -m $numa_or_taskset -b 2000M -t $time -l $length
+		#./throughput.sh -s --udp -m $numa_or_taskset -b 3000M -t $time -l $length
+		./throughput.sh -s --udp -m $numa_or_taskset -b 0 -t $time -l $length
+		#./throughput.sh -s --udp -m $numa_or_taskset -b 0/1000 -t $time -l $length
+	done
+else
+	length=9000
+	for i in {0..9};do 
+		#./throughput.sh -m $numa_or_taskset -b 2000M -t $time -l $length
+		#./throughput.sh -m $numa_or_taskset -b 3000M -t $time -l $length
+		./throughput.sh -m $numa_or_taskset -b 0 -t $time -l $length
+		#./throughput.sh -m $numa_or_taskset -b 0/1000 -t $time -l $length
+	done
+fi
 
 
-### calculate
+[root@dell-per740-91 ~]# cat calculate.sh 
 #!/bin/bash
 #
 
+direction=${1:-"receive"}
+echo "calculating $direction side throughput..."
 max=0
 bitrate_of_max=0
-for bit_rate in 200M 2000M 10000M 20000M 0 0/1000;do
+for bit_rate in 2000M 3000M 0 0/1000;do
 	echo "-- Analyze $bit_rate bitrate connections' throughput"
 	total=0
 	good_resut_count=0
-	for file in kernel103-taskset.log1;do
-	#for file in kernel103.log11 kernel103.log12;do
 	#for file in kernel103.log1 kernel103.log2 kernel103.log3 kernel103.log4;do
+	#for file in kernel156.log1 kernel156.log2 kernel156.log3 kernel156.log4;do
+	for file in nic_rx_on.log nic_rx_off.log;do
 		total_in_file=0
 		good_resut_count_in_file=0
-		res=$(grep  -- "-b $bit_rate -t.*total" $file | grep -Eo "total: [0-9]+ Kbits/sec" | awk '{print $2}')
+		res=$(grep  -- "-b $bit_rate -t.*total $direction" $file | grep -Eo "total $direction: [0-9]+ Kbits/sec" | awk '{print $3}')
 		for rrr in $res;do
 			let good_resut_count+=1
 			let total+=$rrr

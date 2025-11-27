@@ -156,6 +156,15 @@ Wide Bandwidth指的是LPF，
 The maximum bandwidth requirement for an EEC is 10 Hz
 这句话的意思是，LPF的cut-off frequency最大是10HZ,不能再大(Wide)了
 
+Wideband (WB): This setting allows the DPLL to track and pass through low-frequency jitter (wander) but aggressively filter out high-frequency jitter (noise). 
+This is essential for cleaning up noisy input clocks.
+
+Narrowband (NB): This setting filters out almost all jitter, both low and high frequency. 
+It's used when the DPLL needs to "flywheel" and rely on its own stable oscillator, ignoring variations in the input clock.
+
+WB指的应该是低频范围相比于NB的更宽一些，也就是cut-off frequency更大一些。
+所以WB允许更多低频振动通过，也就是保留了信号的wander(保持信号总体的稳定性，过滤掉瞬时的震荡)
+
 ```
 
 ## Jitter and Wander
@@ -1579,7 +1588,7 @@ It refers to a type of pin on an integrated circuit (like a microprocessor) or a
 Think of it as a programmable, digital switch that can be used for a wide variety of tasks.
 ```
 
-##gnr-d 主要同步方法
+## gnr-d 主要同步方法
 ```
 https://docs.google.com/presentation/d/17jn4TmebZDlvrh293WJW1xwbuV7VnPyd/edit?slide=id.p1#slide=id.p1
 
