@@ -1746,3 +1746,117 @@ It excludes almost all network-related impairments.
 Purpose: To characterize the intrinsic quality and stability of the device's clock recovery circuit (DPLL), separate from any network effects.
 
 ```
+
+## synce4l --ts2phc.rh_external_pps 1
+```
+https://github.com/vitus133/tbc-reproduce/blob/5b7cfe04a64aa8a706ec7388253ea56d6cadc216/commands.sh#L9
+ts2phc is running with -a --ts2phc.rh_external_pps 1
+It is not synchronizing phc when ptp4l does it, only when in holdover. But it should still get timestamps
+
+
+[root@dell-per740-25 common]cat ts2phc.cfg 
+[global]
+use_syslog 0
+verbose 1
+logging_level 7
+ts2phc.pulsewidth 100000000
+leapfile leapseconds.list
+domainNumber 24
+uds_address /var/run/ptp4l.1.socket
+message_tag [ts2phc.1.config:{level}]
+[ens4f0]
+ts2phc.extts_polarity rising
+ts2phc.extts_correction -10
+ts2phc.master 0
+ts2phc.pin_index 1
+
+[root@dell-per740-25 common]# ts2phc -f ts2phc.cfg -s generic -a --ts2phc.channel=1 --ts2phc.pin_index=1 --ts2phc.rh_external_pps 1
+
+[root@dell-per740-25 bc]# cat ptp_oc.cfg 
+#profile: 01-tbc-tr
+
+[ens4f2]
+masterOnly 0
+[global]
+twoStepFlag 1
+slaveOnly 0
+priority1 128
+priority2 128
+domainNumber 24
+clockClass 248
+clockAccuracy 0xFE
+offsetScaledLogVariance 0xFFFF
+free_running 0
+freq_est_interval 1
+dscp_event 0
+dscp_general 0
+dataset_comparison G.8275.x
+G.8275.defaultDS.localPriority 128
+logAnnounceInterval -3
+logSyncInterval -4
+logMinDelayReqInterval -4
+logMinPdelayReqInterval -4
+announceReceiptTimeout 3
+syncReceiptTimeout 0
+delayAsymmetry 0
+fault_reset_interval -4
+neighborPropDelayThresh 20000000
+masterOnly 0
+G.8275.portDS.localPriority 128
+assume_two_step 0
+logging_level 6
+path_trace_enabled 0
+follow_up_info 0
+hybrid_e2e 0
+inhibit_multicast_service 0
+net_sync_monitor 0
+tc_spanning_tree 0
+tx_timestamp_timeout 50
+unicast_listen 0
+unicast_master_table 0
+unicast_req_duration 3600
+use_syslog 1
+verbose 0
+summary_interval 0
+kernel_leap 1
+check_fup_sync 0
+clock_class_threshold 135
+pi_proportional_const 0.60
+pi_integral_const 0.001
+pi_proportional_scale 0.0
+pi_proportional_exponent -0.3
+pi_proportional_norm_max 0.7
+pi_integral_scale 0.0
+pi_integral_exponent 0.4
+pi_integral_norm_max 0.3
+step_threshold 2.0
+first_step_threshold 0.00002
+max_frequency 900000000
+clock_servo pi
+sanity_freq_limit 200000000
+ntpshm_segment 0
+transportSpecific 0x0
+ptp_dst_mac 01:1B:19:00:00:00
+p2p_dst_mac 01:80:C2:00:00:0E
+udp_ttl 1
+udp6_scope 0x0E
+uds_address /var/run/ptp4l.1.socket
+clock_type OC
+network_transport L2
+delay_mechanism E2E
+time_stamping hardware
+tsproc_mode filter
+delay_filter moving_median
+delay_filter_length 10
+egressLatency 0
+ingressLatency 0
+boundary_clock_jbod 1
+productDescription ;;
+revisionData ;;
+manufacturerIdentity 00:00:00
+userDescription ;
+timeSource 0xA0
+message_tag [ptp4l.1.config:{level}]
+
+[root@dell-per740-25 bc]# chrt -f 10 ptp4l -2 -m -f ptp_oc.cfg --summary_interval -4
+```
