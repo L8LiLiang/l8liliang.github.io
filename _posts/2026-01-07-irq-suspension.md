@@ -8,7 +8,7 @@ key: Linux
 
 ## irq suspension
 ```
-gro-flush-timeout defer-hard-irqs irq-suspend-timeout可以在napi上设置，也可以全局设置·
+gro-flush-timeout defer-hard-irqs irq-suspend-timeout可以在napi上设置，也可以全局设置
 from irq.sh
 		$PERNAPI && {
 			for ((q=0;q<$qcntcurr;q++)); do
